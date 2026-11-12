@@ -3,6 +3,7 @@ export type Cycle = 'monthly' | 'yearly';
 export interface Subscription {
   id: string;
   name: string;
+  domain?: string; // ロゴ取得用のサービスのドメイン (例: netflix.com)
   amount: number; // 1回の請求額
   cycle: Cycle;
   billingDay: number; // 請求日 (1-31)。年払いは startDate の月に請求

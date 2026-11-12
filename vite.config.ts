@@ -10,6 +10,20 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
+      workbox: {
+        // サービスのロゴ (favicon) はオフラインでも表示できるようにキャッシュする
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/www\.google\.com\/s2\/favicons/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'service-logos',
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
       manifest: {
         name: 'kakeibo - 家計簿',
         short_name: 'kakeibo',
