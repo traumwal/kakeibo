@@ -184,3 +184,8 @@ legend { font-size: 0.85rem; color: var(--muted); padding: 0 4px; }
 .tabbar button { flex: 1; max-width: 144px; border: none; background: none; padding: 8px 0 10px; font-size: 0.7rem; color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .tabbar button.on { color: var(--accent); font-weight: 700; }
 .tab-icon { font-size: 1.2rem; line-height: 1.2; }
+
+.sync-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.sync-dot.synced { background: var(--accent); }
+.sync-dot.syncing { background: var(--c2); }
+.sync-dot.error { background: var(--danger); }
