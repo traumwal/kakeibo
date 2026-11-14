@@ -16,10 +16,10 @@ const time = (d: Date) => d.toLocaleTimeString('ja-JP', { hour: '2-digit', minut
 export function CloudSync() {
   const { cloud } = useStore();
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   if (!supabase) {
     return (
@@ -31,32 +31,29 @@ export function CloudSync() {
   }
   const client = supabase;
 
-  const sendCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
+  const submit = async (mode: 'signIn' | 'signUp') => {
     setErr(null);
-    const addr = email.trim();
-    const { error } = await client.auth.signInWithOtp({
-      email: addr,
-      options: { emailRedirectTo: location.origin + import.meta.env.BASE_URL },
-    });
-    setBusy(false);
-    if (error) setErr(error.message);
-    else setSentTo(addr);
-  };
-
-  const verify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!sentTo) return;
-    setBusy(true);
-    setErr(null);
-    const { error } = await client.auth.verifyOtp({ email: sentTo, token: code.trim(), type: 'email' });
-    setBusy(false);
-    if (error) setErr('コードが正しくないか、期限が切れています');
-    else {
-      setSentTo(null);
-      setCode('');
+    setInfo(null);
+    if (!email.trim() || password.length < 6) {
+      setErr('メールアドレスと6文字以上のパスワードを入れてください');
+      return;
     }
+    setBusy(true);
+    const creds = { email: email.trim(), password };
+    if (mode === 'signIn') {
+      const { error } = await client.auth.signInWithPassword(creds);
+      if (error) setErr(error.message === 'Email not confirmed'
+        ? 'メールアドレスの確認がまだです。届いたメールのリンクを開いてから、もう一度ログインしてください'
+        : 'メールアドレスかパスワードが正しくありません');
+    } else {
+      const { data, error } = await client.auth.signUp({
+        ...creds,
+        options: { emailRedirectTo: location.origin + import.meta.env.BASE_URL },
+      });
+      if (error) setErr(error.message);
+      else if (!data.session) setInfo('確認メールを送りました。メールのリンクを開いたあと、ここでログインしてください');
+    }
+    setBusy(false);
   };
 
   if (cloud.email) {
@@ -85,29 +82,21 @@ export function CloudSync() {
       <h2>クラウド同期</h2>
       <p className="note">
         ログインすると、データがクラウドにも保存され、スマホと PC など複数の端末で同じデータを使えます。
-        パスワードは不要で、メールに届くコードでログインします。
+        はじめての場合はメールアドレスとパスワードを決めて「新規登録」してください。
       </p>
-      {!sentTo ? (
-        <form className="form" onSubmit={sendCode} style={{ marginTop: 12 }}>
-          <label>メールアドレス
-            <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          <div className="actions">
-            <button className="btn primary" disabled={busy}>ログイン用コードを送る</button>
-          </div>
-        </form>
-      ) : (
-        <form className="form" onSubmit={verify} style={{ marginTop: 12 }}>
-          <label>{sentTo} に届いたコード
-            <input inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(e) => setCode(e.target.value)} />
-          </label>
-          <p className="note" style={{ margin: 0 }}>メール内のリンクをこのブラウザで開いてもログインできます。</p>
-          <div className="actions">
-            <button type="button" className="btn" onClick={() => { setSentTo(null); setCode(''); setErr(null); }}>戻る</button>
-            <button className="btn primary" disabled={busy}>ログイン</button>
-          </div>
-        </form>
-      )}
+      <form className="form" style={{ marginTop: 12 }} onSubmit={(e) => { e.preventDefault(); void submit('signIn'); }}>
+        <label>メールアドレス
+          <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label>パスワード(6文字以上)
+          <input type="password" required minLength={6} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        <div className="actions">
+          <button type="button" className="btn" disabled={busy} onClick={() => void submit('signUp')}>新規登録</button>
+          <button className="btn primary" disabled={busy}>ログイン</button>
+        </div>
+      </form>
+      {info && <p className="note">{info}</p>}
       {err && <p className="error" style={{ marginTop: 8 }}>{err}</p>}
     </section>
   );

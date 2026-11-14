@@ -50,9 +50,8 @@ Supabase の URL とキーを設定しないでビルドした場合は、今ま
 
 1. [Supabase](https://supabase.com) でプロジェクトを作る
 2. SQL Editor で [`supabase/schema.sql`](supabase/schema.sql) を実行する(本人のデータしか読み書きできない設定 = RLS つき)
-3. Authentication → Emails → Templates の「Magic Link」の本文に `{{ .Token }}` を入れる(ログイン用の6桁コードがメールに載るようにするため。リンクだけでもログインできますが、ホーム画面に追加した PWA ではコードのほうが確実です)
-4. Authentication → URL Configuration の Site URL / Redirect URLs に公開 URL(例: `https://<user>.github.io/kakeibo/`)と `http://localhost:5173/` を追加する
-5. Project Settings → API の **Project URL** と **anon public key** を設定する
+3. Authentication → URL Configuration の Site URL / Redirect URLs に公開 URL(例: `https://<user>.github.io/kakeibo/`)と `http://localhost:5173/` を追加する(新規登録時の確認メールのリンク先になります)
+4. Project Settings → API の **Project URL** と **anon public key** を設定する
    - ローカル: `.env.example` を `.env.local` にコピーして値を入れる
    - GitHub Pages: リポジトリの Settings → Secrets and variables → Actions に `VITE_SUPABASE_URL` と `VITE_SUPABASE_ANON_KEY` を登録する
 
