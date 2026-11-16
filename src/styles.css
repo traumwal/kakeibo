@@ -245,3 +245,12 @@ legend { font-size: 0.85rem; color: var(--muted); padding: 0 4px; }
 .rules { margin-top: 12px; font-size: 0.85rem; }
 .rules summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .rules ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); display: grid; gap: 6px; }
+
+.pay-basis { max-width: 260px; margin: 12px 0 0; background: var(--surface); }
+.chip.estimate { margin-left: 6px; font-size: 0.7rem; padding: 0 6px; color: var(--c2); border-color: var(--c2); background: none; vertical-align: 1px; }
+.pay-row { display: block; }
+.pay-rule { display: block; font-size: 0.75rem; color: var(--muted); }
+.pay-edit { padding: 4px 0 8px; display: grid; gap: 8px; justify-items: start; }
+.pay-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
+.pay-fields label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+.target-input span { white-space: nowrap; }

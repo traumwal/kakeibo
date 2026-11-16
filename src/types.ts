@@ -71,6 +71,7 @@ export interface Settings {
   monthlyTarget: number; // 毎月の支出の目安 (グラフの目盛りの基準)
   yearlyMode: YearlyMode;
   paymentMethods: string[]; // 支払い方法 (現金・クレジットカードなど)
+  cardRules: Record<string, CardRule>; // 支払い方法名 -> 締め日・支払日 (クレジットカードのみ)
 }
 
 export interface AppData {
@@ -80,4 +81,11 @@ export interface AppData {
   friends: Friend[];
   repayments: Repayment[];
   settings: Settings;
+}
+
+/** クレジットカードの締め日と引き落とし日。31 は月末 */
+export interface CardRule {
+  closingDay: number;
+  payDay: number;
+  payMonths: 1 | 2; // 締め日の翌月 / 翌々月に引き落とし
 }

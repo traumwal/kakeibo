@@ -7,6 +7,7 @@ import type { Expense, Friend, Settlement } from '../types';
 import { Modal } from '../components/Modal';
 import { SubIcon } from '../components/SubIcon';
 import { PeriodNav, usePeriod } from '../components/PeriodNav';
+import { statements, type Statement } from '../lib/card';
 
 type View = 'category' | 'date' | 'payment';
 const VIEWS: [View, string][] = [['category', '分類別'], ['date', '日付順'], ['payment', '支払い別']];
@@ -25,6 +26,12 @@ const loadSort = (): GroupSort => {
     return v === 'count' || v === 'amount' ? v : 'custom';
   } catch { return 'custom'; }
 };
+const BASIS_KEY = 'kakeibo.expenses.payBasis';
+const loadBasis = (): 'use' | 'withdraw' => {
+  try { return localStorage.getItem(BASIS_KEY) === 'withdraw' ? 'withdraw' : 'use'; } catch { return 'use'; }
+};
+/** 引き落としは先の予定も見たいので、今年でも12ヶ月すべて */
+const allMonthsOf = (year: number) => Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
 const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
 
 export function Expenses({ goSettings }: { goSettings: () => void }) {
@@ -49,6 +56,14 @@ export function Expenses({ goSettings }: { goSettings: () => void }) {
   const list = expensesInMonths(data.expenses, months).sort((a, b) => b.date.localeCompare(a.date));
   const total = list.reduce((s, e) => s + e.amount, 0);
   const friendName = (id: string) => data.friends.find((f) => f.id === id)?.name ?? '(削除済み)';
+  const [payBasis, setPayBasisState] = useState<'use' | 'withdraw'>(loadBasis);
+  const setPayBasis = (v: 'use' | 'withdraw') => {
+    setPayBasisState(v);
+    try { localStorage.setItem(BASIS_KEY, v); } catch { /* 保存できなくても切り替える */ }
+  };
+  const hasRules = Object.keys(data.settings.cardRules ?? {}).length > 0;
+  const stmts = view === 'payment' && payBasis === 'withdraw' ? statements(data, isYear ? allMonthsOf(period.year) : months, today()) : [];
+  const yearCards = [...new Set(stmts.map((s) => s.card))].map((card) => ({ card, list: stmts.filter((s) => s.card === card) }));
   const lastPayment = [...data.expenses].sort((a, b) => b.date.localeCompare(a.date)).find((e) => e.payment)?.payment;
 
   const save = (e: Expense, newFriends: Friend[]) => {
@@ -98,20 +113,46 @@ export function Expenses({ goSettings }: { goSettings: () => void }) {
 
       {view === 'payment' && (
         <>
-          <div className="toolbar">
-            <div>支払い方法別 <b className="num">{formatYen(periodTotal)}</b></div>
-            <button className="btn primary" onClick={() => setEditing('new')}>+ 記録する</button>
+          <div className="seg two small pay-basis">
+            <button className={payBasis === 'use' ? 'on' : ''} aria-pressed={payBasis === 'use'} onClick={() => setPayBasis('use')}>使った月</button>
+            <button className={payBasis === 'withdraw' ? 'on' : ''} aria-pressed={payBasis === 'withdraw'} onClick={() => setPayBasis('withdraw')}>引き落とし日</button>
           </div>
-          {payGroups.length === 0 && <p className="empty">この期間の記録はまだありません</p>}
-          {payGroups.map((g) => (
-            <CategoryCard key={`${period.label}-${g.category}`} group={g} share={periodTotal > 0 ? g.amount / periodTotal : 0} onEdit={setEditing}
-              multi={isYear} defaultOpen={false} showCategory />
-          ))}
-          {payGroups.length > 0 && (
-            <p className="note">
-              サブスクの分も含めた、カードごとの合計です。{payGroups.some((g) => g.category === NO_PAYMENT_LABEL) && '「未設定」は記録やサブスクの編集で支払い方法を選ぶと振り分けられます。'}
-              カードは<button className="link small-link" onClick={goSettings}>設定</button>で追加できます
-            </p>
+          {payBasis === 'use' ? (
+            <>
+              <div className="toolbar">
+                <div>支払い方法別 <b className="num">{formatYen(periodTotal)}</b></div>
+                <button className="btn primary" onClick={() => setEditing('new')}>+ 記録する</button>
+              </div>
+              {payGroups.length === 0 && <p className="empty">この期間の記録はまだありません</p>}
+              {payGroups.map((g) => (
+                <CategoryCard key={`${period.label}-${g.category}`} group={g} share={periodTotal > 0 ? g.amount / periodTotal : 0} onEdit={setEditing}
+                  multi={isYear} defaultOpen={false} showCategory />
+              ))}
+              {payGroups.length > 0 && (
+                <p className="note">
+                  サブスクの分も含めた、カードごとの合計です。{payGroups.some((g) => g.category === NO_PAYMENT_LABEL) && '「未設定」は記録やサブスクの編集で支払い方法を選ぶと振り分けられます。'}
+                  カードは<button className="link small-link" onClick={goSettings}>設定</button>で追加できます
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="toolbar">
+                <div>{isYear ? `${period.year}年` : 'この月'}の引き落とし <b className="num">{formatYen(stmts.reduce((s, x) => s + x.amount, 0))}</b></div>
+              </div>
+              {!hasRules && (
+                <p className="empty">
+                  <button className="link" onClick={goSettings}>設定</button>の「支払い方法」でカードの締め日と支払日を入れると、引き落とし額が出ます
+                </p>
+              )}
+              {hasRules && stmts.length === 0 && <p className="empty">この期間の引き落としはありません</p>}
+              {isYear
+                ? yearCards.map((c) => <YearCardSummary key={c.card} card={c.card} list={c.list} />)
+                : stmts.map((st) => <StatementCard key={`${st.card}-${st.payDate}`} st={st} onEdit={setEditing} />)}
+              {hasRules && stmts.length > 0 && (
+                <p className="note">利用日と締め日から計算した額です。サブスクは請求日に全額で数えます。実際の請求額はカード会社の明細で確認してください</p>
+              )}
+            </>
           )}
         </>
       )}
@@ -242,6 +283,55 @@ function LedgerRow({ item, onEdit, multi, showCategory }: { item: LedgerItem; on
       </span>
       <span className="num">{formatYen(e.amount)}</span>
     </li>
+  );
+}
+
+/** カード1枚の1回分の引き落とし */
+function StatementCard({ st, onEdit }: { st: Statement; onEdit: (e: Expense) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="card cat-card">
+      <button className="cat-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="grow">
+          <span className="cat-name">{st.card}{st.open && <span className="chip estimate">見込み</span>}</span>
+          <span className="cat-meta">{md(st.payDate)} 引き落とし · {md(st.closeDate)} 締め · {st.items.length}件</span>
+        </span>
+        <b className="num cat-total">{formatYen(st.amount)}</b>
+        <span className="chev" aria-hidden>{open ? '⌃' : '⌄'}</span>
+      </button>
+      {open && (
+        <ul className="list cat-items">
+          {st.items.map((item) => (
+            <LedgerRow key={item.kind === 'sub' ? `s-${item.sub.id}-${item.date}` : item.expense.id} item={item} onEdit={onEdit} multi={false} showCategory />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** 年表示: カードごとに、月ごとの引き落とし額を並べる */
+function YearCardSummary({ card, list }: { card: string; list: Statement[] }) {
+  const total = list.reduce((s, x) => s + x.amount, 0);
+  return (
+    <section className="card cat-card">
+      <div className="cat-head">
+        <span className="grow">
+          <span className="cat-name">{card}</span>
+          <span className="cat-meta">{list.length}回の引き落とし</span>
+        </span>
+        <b className="num cat-total">{formatYen(total)}</b>
+      </div>
+      <ul className="list cat-items">
+        {list.map((st) => (
+          <li key={st.payDate} className="row">
+            <span className="date">{md(st.payDate)}</span>
+            <span className="grow">{st.items.length}件{st.open && <span className="chip estimate">見込み</span>}</span>
+            <span className="num">{formatYen(st.amount)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

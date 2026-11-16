@@ -21,6 +21,7 @@ export function emptyData(): AppData {
       monthlyTarget: 20000,
       yearlyMode: 'spread',
       paymentMethods: ['現金'],
+      cardRules: {},
     },
   };
 }

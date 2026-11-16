@@ -1,10 +1,11 @@
 import { useStore } from '../hooks/useStore';
 import { categoryTotals, friendBalances, monthSummary, monthlyTrend, monthsOfYear, reviewCandidates, sumSummaries, SUBSCRIPTION_LABEL, VARIABLE_LABEL, yearTrend } from '../lib/calc';
-import { addMonths, today, ymOf } from '../lib/date';
+import { addMonths, daysBetween, today, ymOf } from '../lib/date';
 import { formatYen } from '../lib/format';
 import { CategoryBars, TrendChart } from '../components/Charts';
 import { PeriodNav, usePeriod } from '../components/PeriodNav';
 import type { Tab } from '../App';
+import { upcomingWithdrawals } from '../lib/card';
 
 export function Dashboard({ go }: { go: (t: Tab) => void }) {
   const { data } = useStore();
@@ -26,6 +27,7 @@ export function Dashboard({ go }: { go: (t: Tab) => void }) {
   const owe = balances.filter((b) => b.balance < 0).reduce((s, b) => s - b.balance, 0);
   const lent = balances.filter((b) => b.balance > 0).reduce((s, b) => s + b.balance, 0);
   const reviews = reviewCandidates(data.subscriptions, data.settings, today());
+  const upcoming = upcomingWithdrawals(data, today());
 
   return (
     <div className="page">
@@ -75,6 +77,29 @@ export function Dashboard({ go }: { go: (t: Tab) => void }) {
               <span className="num">{reviews.length}件</span>
             </button>
           )}
+        </section>
+      )}
+
+      {upcoming.length > 0 && (
+        <section className="card">
+          <h2>次の引き落とし</h2>
+          <ul className="list">
+            {upcoming.map((u) => {
+              const days = daysBetween(today(), u.payDate);
+              return (
+                <li key={u.card} className="row clickable" onClick={() => go('expenses')}>
+                  <span className="grow">
+                    <b>{u.card}</b>
+                    <span className="sub-sub">
+                      {Number(u.payDate.slice(5, 7))}/{Number(u.payDate.slice(8))}({days === 0 ? '今日' : `あと${days}日`})
+                      {u.open && <span className="chip estimate">見込み</span>}
+                    </span>
+                  </span>
+                  <b className="num">{formatYen(u.amount)}</b>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
 
