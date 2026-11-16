@@ -10,6 +10,7 @@ export function Settings() {
   const { data, update, replace } = useStore();
   const { settings } = data;
   const [newCat, setNewCat] = useState('');
+  const [newPay, setNewPay] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const suggestions = SUGGESTED_CATEGORIES.filter((c) => !settings.categories.includes(c));
   const setS = (patch: Partial<typeof settings>) => update((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
@@ -65,15 +66,73 @@ export function Settings() {
       </section>
 
       <section className="card">
+        <h2>毎月の支出の目安</h2>
+        <p className="note">ホームのグラフの目盛りと目安の線は、この額を基準にします(2万円なら 1万・2万・3万…)</p>
+        <div className="row target-input">
+          <input type="number" inputMode="numeric" min="0" step="1000" value={settings.monthlyTarget || ''} placeholder="20000"
+            onChange={(e) => setS({ monthlyTarget: Number(e.target.value) || 0 })} />
+          <span>円 / 月</span>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>支払い方法</h2>
+        <p className="note">クレジットカードなどを登録すると、記録タブの「支払い別」でカードごとの合計がわかります</p>
+        <ul className="list cat-settings">
+          {settings.paymentMethods.map((p) => (
+            <li key={p} className="row">
+              <span className="grow">{p}</span>
+              <button className="icon-btn" aria-label={`${p}を削除`}
+                onClick={() => confirm(`「${p}」を一覧から消しますか?(記録やサブスクに付けた支払い方法はそのまま残ります)`) && setS({ paymentMethods: settings.paymentMethods.filter((x) => x !== p) })}>×</button>
+            </li>
+          ))}
+        </ul>
+        <form className="toolbar" onSubmit={(e) => {
+          e.preventDefault();
+          const v = newPay.trim();
+          if (v && !settings.paymentMethods.includes(v)) setS({ paymentMethods: [...settings.paymentMethods, v] });
+          setNewPay('');
+        }}>
+          <input value={newPay} onChange={(e) => setNewPay(e.target.value)} placeholder="例: 楽天カード" />
+          <button className="btn">追加</button>
+        </form>
+      </section>
+
+      <section className="card">
         <h2>サブスクの見直し基準</h2>
         <div className="form">
-          <label>1時間あたりのコストがこの額を超えたら(円)
-            <input type="number" min="0" value={settings.reviewCostPerHour} onChange={(e) => setS({ reviewCostPerHour: Number(e.target.value) })} />
-          </label>
-          <label>最後に使ってからこの日数がたったら(日)
+          <label>最後に「使った」を押してからこの日数がたったら(日)
             <input type="number" min="1" value={settings.reviewUnusedDays} onChange={(e) => setS({ reviewUnusedDays: Number(e.target.value) })} />
           </label>
         </div>
+        <p className="note">「ほぼ使わない」にしたサブスクも見直し候補になります</p>
+      </section>
+
+      <section className="card">
+        <h2>集計のしかた</h2>
+        <div className="form">
+          <div className="field">
+            <span className="field-label">年払いのサブスク</span>
+            <div className="seg two">
+              <button type="button" className={settings.yearlyMode === 'spread' ? 'on' : ''} aria-pressed={settings.yearlyMode === 'spread'}
+                onClick={() => setS({ yearlyMode: 'spread' })}>毎月に分ける(÷12)</button>
+              <button type="button" className={settings.yearlyMode === 'billing' ? 'on' : ''} aria-pressed={settings.yearlyMode === 'billing'}
+                onClick={() => setS({ yearlyMode: 'billing' })}>請求した月にまとめる</button>
+            </div>
+          </div>
+        </div>
+        <details className="rules">
+          <summary>集計のくわしいルール</summary>
+          <ul>
+            <li>支出は「サブスク・固定費」と「日々の支出」(記録タブで記録したもの)に分けて集計します</li>
+            <li>年払いのサブスクは、上の設定に応じて毎月 1/12 ずつ、または開始日の月にまとめて計上します。毎月に分けると月ごとの比較がしやすく、まとめると実際にお金が出ていく月がわかります</li>
+            <li>サブスクは開始日の月から計上します。スイッチをオフにした月までは計上し、翌月からは計上しません。あとでオンに戻しても、オフだった月は計上されません</li>
+            <li>サブスクを削除すると、過去の月の集計からも消えます</li>
+            <li>年の集計は、今年なら今月までです(先の月のサブスクを見込みで足しません)。前年比は前年の同じ月までと比べます</li>
+            <li>友達と立て替えた支出は、自分の分だけを支出として計上します。友達が立て替えてくれた分も、その日の支出として計上し、同じ額を「借り」として記録します</li>
+            <li>カテゴリの予算は月の予算です。年で見るときは12倍(今年は今月までの月数倍)で比べます</li>
+          </ul>
+        </details>
       </section>
 
       <CloudSync />

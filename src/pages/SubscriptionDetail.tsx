@@ -1,33 +1,36 @@
-import { costPerHour, isActiveOn, monthlyAmount, nextBillingDate, yearlyAmount, type ReviewCandidate, type ReviewReason } from '../lib/calc';
+import { isOn, monthlyAmount, nextBillingDate, usesInLast, yearlyAmount, type ReviewCandidate, type ReviewReason } from '../lib/calc';
 import { daysBetween, today } from '../lib/date';
 import { formatYen } from '../lib/format';
-import type { Subscription } from '../types';
+import type { Subscription, UsageLevel } from '../types';
 import { SubIcon } from '../components/SubIcon';
+import { Switch } from '../components/Switch';
 
 export function reasonText(r: ReviewReason): string {
   switch (r.kind) {
-    case 'unused': return `${r.days}日間使っていません`;
+    case 'unused': return `${r.days}日間「使った」の記録がありません`;
     case 'neverUsed': return '「使った」の記録が一度もありません';
-    case 'costly': return `1時間あたり ${formatYen(r.costPerHour)} とコストが高めです`;
-    case 'noUsage': return '月の利用時間が未入力です';
+    case 'rarely': return '「ほぼ使わない」になっています';
   }
 }
 
+const USAGE: [UsageLevel, string][] = [['often', 'よく使う'], ['sometimes', 'たまに'], ['rarely', 'ほぼ使わない']];
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
 const ymd = (d: string) => `${d.slice(0, 4)}/${md(d)}`;
 
-export function SubscriptionDetail({ sub, review, onBack, onEdit, onMarkUsed }: {
+export function SubscriptionDetail({ sub, review, onBack, onEdit, onToggle, onDelete, onMarkUsed, onUsage }: {
   sub: Subscription;
   review?: ReviewCandidate;
   onBack: () => void;
   onEdit: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
   onMarkUsed: () => void;
+  onUsage: (u: UsageLevel | undefined) => void;
 }) {
   const t = today();
-  const on = isActiveOn(sub, t);
+  const on = isOn(sub, t);
   const next = nextBillingDate(sub, t);
-  const cph = costPerHour(sub);
-  const serious = review?.reasons.some((r) => r.kind !== 'noUsage');
+  const uses = usesInLast(sub, t, 30);
 
   return (
     <div className="page">
@@ -42,16 +45,43 @@ export function SubscriptionDetail({ sub, review, onBack, onEdit, onMarkUsed }: 
         <div className="sub-price num">
           {formatYen(sub.amount)}<small>/{sub.cycle === 'monthly' ? '月' : '年'}</small>
         </div>
-        {!on && <span className="chip">解約済み</span>}
       </header>
 
+      <section className="card switch-row">
+        <span className="grow">
+          <b>{on ? 'オン' : 'オフ'}</b>
+          <span className="sub-sub">{on ? '毎月の支出に集計しています' : `${ymd(sub.endDate!)} にオフ。翌月から集計しません`}</span>
+        </span>
+        <Switch on={on} onChange={onToggle} label="オン/オフ" />
+      </section>
+
       {review && (
-        <section className={serious ? 'card review-box serious' : 'card review-box'}>
-          <h2>{serious ? '❗ 見直し候補です' : 'ひとこと'}</h2>
+        <section className="card review-box serious">
+          <h2>❗ 見直し候補です</h2>
           <ul className="reasons">
             {review.reasons.map((r) => <li key={r.kind}>{reasonText(r)}</li>)}
           </ul>
-          {serious && <p className="saving">解約すると年間 <b className="num">{formatYen(review.yearlySaving)}</b> 浮きます</p>}
+          <p className="saving">オフにすると年間 <b className="num">{formatYen(review.yearlySaving)}</b> 浮きます</p>
+        </section>
+      )}
+
+      {on && (
+        <section className="card">
+          <h2>どのくらい使ってる?</h2>
+          <div className="seg">
+            {USAGE.map(([v, l]) => (
+              <button key={v} className={sub.usage === v ? 'on' : ''} aria-pressed={sub.usage === v}
+                onClick={() => onUsage(sub.usage === v ? undefined : v)}>{l}</button>
+            ))}
+          </div>
+          <div className="usage-stats">
+            <span>直近30日 <b className="num">{uses}回</b></span>
+            {uses > 0 && <span>1回あたり <b className="num">{formatYen(monthlyAmount(sub) / uses)}</b></span>}
+            <span>最後に使った日 <b>{sub.lastUsedAt ? (sub.lastUsedAt === t ? '今日' : `${daysBetween(sub.lastUsedAt, t)}日前`) : '記録なし'}</b></span>
+          </div>
+          <button className="btn primary block" onClick={onMarkUsed} disabled={sub.lastUsedAt === t}>
+            {sub.lastUsedAt === t ? '今日の利用を記録しました' : '今日使った'}
+          </button>
         </section>
       )}
 
@@ -61,25 +91,14 @@ export function SubscriptionDetail({ sub, review, onBack, onEdit, onMarkUsed }: 
           {sub.cycle === 'yearly' && (<><dt>月額換算</dt><dd className="num">{formatYen(monthlyAmount(sub))}</dd></>)}
           <dt>次回請求</dt>
           <dd>{on && next ? `${md(next)}(${next === t ? '今日' : `あと${daysBetween(t, next)}日`})` : '—'}</dd>
-          <dt>1時間あたり</dt>
-          <dd className="num">
-            {cph == null ? '未入力' : cph === Infinity ? '利用0時間' : formatYen(cph)}
-            {sub.usageHoursPerMonth != null && <small>(月{sub.usageHoursPerMonth}時間)</small>}
-          </dd>
-          <dt>最後に使った日</dt>
-          <dd>{sub.lastUsedAt ? `${md(sub.lastUsedAt)}(${sub.lastUsedAt === t ? '今日' : `${daysBetween(sub.lastUsedAt, t)}日前`})` : '記録なし'}</dd>
+          <dt>支払い方法</dt><dd>{sub.payment ?? '未設定'}</dd>
           <dt>分類</dt><dd>{sub.category}</dd>
           <dt>開始日</dt><dd>{ymd(sub.startDate)}</dd>
-          {sub.endDate && (<><dt>解約日</dt><dd>{ymd(sub.endDate)}</dd></>)}
           {sub.memo && (<><dt>メモ</dt><dd>{sub.memo}</dd></>)}
         </dl>
       </section>
 
-      {on && (
-        <button className="btn primary block" onClick={onMarkUsed} disabled={sub.lastUsedAt === t}>
-          {sub.lastUsedAt === t ? '今日の利用を記録しました' : '今日使った'}
-        </button>
-      )}
+      <button className="btn danger block" onClick={onDelete}>このサブスクを削除</button>
     </div>
   );
 }

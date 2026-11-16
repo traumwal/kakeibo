@@ -1,39 +1,57 @@
-import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { categoryTotals, friendBalances, monthSummary, monthlyTrend, reviewCandidates } from '../lib/calc';
-import { addMonths, formatYm, today, ymOf } from '../lib/date';
+import { categoryTotals, friendBalances, monthSummary, monthlyTrend, monthsOfYear, reviewCandidates, sumSummaries, SUBSCRIPTION_LABEL, VARIABLE_LABEL, yearTrend } from '../lib/calc';
+import { addMonths, today, ymOf } from '../lib/date';
 import { formatYen } from '../lib/format';
 import { CategoryBars, TrendChart } from '../components/Charts';
+import { PeriodNav, usePeriod } from '../components/PeriodNav';
 import type { Tab } from '../App';
 
 export function Dashboard({ go }: { go: (t: Tab) => void }) {
   const { data } = useStore();
-  const [ym, setYm] = useState(ymOf(today()));
-  const cur = monthSummary(data, ym);
-  const prev = monthSummary(data, addMonths(ym, -1));
+  const [period, actions] = usePeriod();
+  const nowYm = ymOf(today());
+  const target = data.settings.monthlyTarget;
+  const isMonth = period.kind === 'month';
+
+  const cur = sumSummaries(period.months.map((ym) => monthSummary(data, ym)));
+  // 年表示は前年の同じ期間 (今年が11月までなら前年も11月まで) と比べる
+  const prevMonths = isMonth ? [addMonths(period.ym, -1)] : monthsOfYear(period.year - 1, nowYm).slice(0, period.months.length || 12);
+  const prev = sumSummaries(prevMonths.map((ym) => monthSummary(data, ym)));
   const diff = cur.total - prev.total;
+  const monthCount = Math.max(1, period.months.length);
+  const avg = cur.total / monthCount;
+  const targetTotal = target * monthCount;
+
   const balances = friendBalances(data.friends, data.expenses, data.repayments);
   const owe = balances.filter((b) => b.balance < 0).reduce((s, b) => s - b.balance, 0);
   const lent = balances.filter((b) => b.balance > 0).reduce((s, b) => s + b.balance, 0);
-  const reviews = reviewCandidates(data.subscriptions, data.settings, today()).filter((c) => c.reasons.some((r) => r.kind !== 'noUsage'));
+  const reviews = reviewCandidates(data.subscriptions, data.settings, today());
 
   return (
     <div className="page">
-      <div className="month-nav">
-        <button className="icon-btn" onClick={() => setYm(addMonths(ym, -1))} aria-label="前の月">‹</button>
-        <h1>{formatYm(ym)}</h1>
-        <button className="icon-btn" onClick={() => setYm(addMonths(ym, 1))} aria-label="次の月">›</button>
-      </div>
+      <PeriodNav period={period} actions={actions} />
 
       <section className="card hero">
-        <div className="label">今月の支出合計</div>
+        <div className="label">{isMonth ? '今月の支出合計' : `${period.year}年の支出合計`}</div>
         <div className="big num">{formatYen(cur.total)}</div>
         <div className={diff > 0 ? 'delta up' : 'delta down'}>
-          前月比 {diff >= 0 ? '+' : '−'}{formatYen(Math.abs(diff))}
+          {isMonth ? '前月比' : '前年同期比'} {diff >= 0 ? '+' : '−'}{formatYen(Math.abs(diff))}
         </div>
+        {target > 0 && (
+          <div className="target-line">
+            {isMonth
+              ? cur.total <= target
+                ? <>目安 {formatYen(target)} まであと <b className="num">{formatYen(target - cur.total)}</b></>
+                : <span className="over">目安 {formatYen(target)} を <b className="num">{formatYen(cur.total - target)}</b> 超えています</span>
+              : <>月平均 <b className={avg > target ? 'num over' : 'num'}>{formatYen(avg)}</b>(目安 {formatYen(target)})</>}
+            <div className="hbar-track">
+              <div className={cur.total > targetTotal ? 'hbar-fill over' : 'hbar-fill'} style={{ width: `${Math.min(100, (cur.total / targetTotal) * 100)}%` }} />
+            </div>
+          </div>
+        )}
         <div className="split">
-          <div><span className="dot c1" />サブスク・固定費 <b className="num">{formatYen(cur.subscriptions)}</b></div>
-          <div><span className="dot c2" />単発支出 <b className="num">{formatYen(cur.expenses)}</b></div>
+          <div><span className="dot c1" />{SUBSCRIPTION_LABEL} <b className="num">{formatYen(cur.subscriptions)}</b></div>
+          <div><span className="dot c2" />{VARIABLE_LABEL} <b className="num">{formatYen(cur.expenses)}</b></div>
         </div>
       </section>
 
@@ -62,13 +80,12 @@ export function Dashboard({ go }: { go: (t: Tab) => void }) {
 
       <section className="card">
         <h2>カテゴリ別</h2>
-        <CategoryBars data={categoryTotals(data, ym)} />
+        <CategoryBars data={categoryTotals(data, period.months)} />
       </section>
 
       <section className="card">
-        <h2>月別推移(直近6ヶ月)</h2>
-        <TrendChart data={monthlyTrend(data, ym, 6)} />
-        <p className="note">年払いのサブスクは月額に換算(÷12)して表示しています</p>
+        <h2>推移</h2>
+        <TrendChart data={isMonth ? monthlyTrend(data, period.ym, 6) : yearTrend(data, period.year, nowYm)} target={target} />
       </section>
     </div>
   );

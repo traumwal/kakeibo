@@ -6,9 +6,10 @@ import type { Subscription } from '../types';
 import { Modal } from './Modal';
 import { SubIcon } from './SubIcon';
 
-export function SubscriptionForm({ initial, categories, onSave, onClose, onDelete }: {
+export function SubscriptionForm({ initial, categories, payments, onSave, onClose, onDelete }: {
   initial?: Subscription;
   categories: string[];
+  payments: string[];
   onSave: (s: Subscription) => void;
   onClose: () => void;
   onDelete: (id: string) => void;
@@ -22,8 +23,7 @@ export function SubscriptionForm({ initial, categories, onSave, onClose, onDelet
     billingDay: String(initial?.billingDay ?? Number(t.slice(8))),
     category: initial?.category ?? 'サブスク',
     startDate: initial?.startDate ?? t,
-    endDate: initial?.endDate ?? '',
-    usage: initial?.usageHoursPerMonth != null ? String(initial.usageHoursPerMonth) : '',
+    payment: initial?.payment ?? '',
     memo: initial?.memo ?? '',
   });
   // 自動で入れたドメインは、名前を変えたら追従させる (手で入力したものは上書きしない)
@@ -37,6 +37,7 @@ export function SubscriptionForm({ initial, categories, onSave, onClose, onDelet
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
+      ...initial,
       id: initial?.id ?? uid(),
       name: f.name.trim(),
       domain: cleanDomain(f.domain) || undefined,
@@ -45,9 +46,7 @@ export function SubscriptionForm({ initial, categories, onSave, onClose, onDelet
       billingDay: Math.min(31, Math.max(1, Number(f.billingDay) || 1)),
       category: f.category,
       startDate: f.startDate,
-      endDate: f.endDate || undefined,
-      usageHoursPerMonth: f.usage === '' ? undefined : Number(f.usage),
-      lastUsedAt: initial?.lastUsedAt,
+      payment: f.payment || undefined,
       memo: f.memo.trim() || undefined,
     });
   };
@@ -82,15 +81,14 @@ export function SubscriptionForm({ initial, categories, onSave, onClose, onDelet
         </div>
         <div className="grid2">
           <label>開始日<input required type="date" value={f.startDate} onChange={set('startDate')} /></label>
-          <label>解約日<input type="date" value={f.endDate} onChange={set('endDate')} /></label>
+          <label>支払い方法
+            <select value={f.payment} onChange={set('payment')}>
+              <option value="">未設定</option>
+              {(f.payment && !payments.includes(f.payment) ? [...payments, f.payment] : payments).map((p) => <option key={p}>{p}</option>)}
+            </select>
+          </label>
         </div>
-        {f.cycle === 'yearly' && <p className="note">年払いは開始日の月の請求日に請求される扱いです</p>}
-        <label>月の利用時間(時間・任意)
-          <input type="number" inputMode="decimal" min="0" step="0.5" value={f.usage} onChange={set('usage')} placeholder="例: 12" />
-        </label>
-        <p className="note">
-          ブラウザからは他のアプリの利用時間を自動で取得できません。iPhoneは「設定 → スクリーンタイム」、Androidは「設定 → Digital Wellbeing」で確認した値を入れると、1時間あたりのコストが計算されます。
-        </p>
+        {f.cycle === 'yearly' && <p className="note">年払いは開始日の月に請求される扱いです</p>}
         <label>メモ<input value={f.memo} onChange={set('memo')} /></label>
         <div className="actions">
           {initial && <button type="button" className="btn danger" onClick={() => onDelete(initial.id)}>削除</button>}

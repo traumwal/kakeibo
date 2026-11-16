@@ -9,11 +9,27 @@ export interface Subscription {
   billingDay: number; // 請求日 (1-31)。年払いは startDate の月に請求
   category: string;
   startDate: string; // YYYY-MM-DD
-  endDate?: string; // 解約日 (YYYY-MM-DD)。未設定なら継続中
-  usageHoursPerMonth?: number; // スクリーンタイム等で確認した月の利用時間 (手入力)
-  lastUsedAt?: string; // 「使った」ボタンで記録 (YYYY-MM-DD)
+  /** オフにした日 (YYYY-MM-DD)。オン/オフのスイッチで自動で入る。未設定ならオン */
+  endDate?: string;
+  /** 以前オンだった期間 (オフ → オンに戻したとき、過去の集計を残すため) */
+  history?: Period[];
+  /** どのくらい使っているかの自己評価 */
+  usage?: UsageLevel;
+  lastUsedAt?: string; // 「今日使った」ボタンで記録 (YYYY-MM-DD)
+  usedDates?: string[]; // 「今日使った」を押した日 (直近90日分)
+  payment?: string; // 支払い方法 (例: 楽天カード)
   memo?: string;
 }
+
+export interface Period {
+  start: string;
+  end: string;
+}
+
+export type UsageLevel = 'often' | 'sometimes' | 'rarely';
+
+/** spread: 年払いを12で割って毎月に計上 / billing: 請求した月にまとめて計上 */
+export type YearlyMode = 'spread' | 'billing';
 
 /** friendPaid: 友達が立て替えてくれた額 (自分が借り) / iPaid: 自分が立て替えた額 (自分が貸し) */
 export interface Settlement {
@@ -29,6 +45,7 @@ export interface Expense {
   total?: number; // お会計の合計額 (割り勘・立て替え時の参考)
   category: string;
   memo?: string;
+  payment?: string; // 支払い方法 (例: 現金, 楽天カード)
   settlements?: Settlement[];
 }
 
@@ -50,8 +67,10 @@ export interface Repayment {
 export interface Settings {
   categories: string[];
   budgets: Record<string, number>; // カテゴリ -> 月予算
-  reviewCostPerHour: number; // 1時間あたりこの額を超えたら見直し候補
   reviewUnusedDays: number; // 最終利用からこの日数を超えたら見直し候補
+  monthlyTarget: number; // 毎月の支出の目安 (グラフの目盛りの基準)
+  yearlyMode: YearlyMode;
+  paymentMethods: string[]; // 支払い方法 (現金・クレジットカードなど)
 }
 
 export interface AppData {
