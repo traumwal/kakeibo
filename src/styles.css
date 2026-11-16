@@ -209,3 +209,7 @@ legend { font-size: 0.85rem; color: var(--muted); padding: 0 4px; }
 .reorder .icon-btn { font-size: 0.85rem; padding: 0 6px; line-height: 1.3; }
 .icon-btn:disabled { opacity: 0.25; cursor: default; background: none; }
 .cat-name-btn { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 0; }
+.sort-row { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 0.85rem; }
+.sort-row .seg { flex: 1; max-width: 260px; background: var(--surface); }
+.seg.small button { padding: 5px 4px; font-size: 0.8rem; }
+.small-link { font-size: 0.8rem; white-space: nowrap; }

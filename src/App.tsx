@@ -25,7 +25,7 @@ export default function App() {
       <main>
         {tab === 'home' && <Dashboard go={setTab} />}
         {tab === 'subs' && <Subscriptions />}
-        {tab === 'expenses' && <Expenses />}
+        {tab === 'expenses' && <Expenses goSettings={() => { setTab('settings'); window.scrollTo(0, 0); }} />}
         {tab === 'friends' && <Friends />}
         {tab === 'settings' && <Settings />}
       </main>

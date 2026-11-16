@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { categoryBreakdown, expensesInMonth, type CategoryGroup, type LedgerItem } from '../lib/calc';
+import { categoryBreakdown, expensesInMonth, sortGroups, type CategoryGroup, type GroupSort, type LedgerItem } from '../lib/calc';
 import { addMonths, formatYm, today, ymOf } from '../lib/date';
 import { formatYen, uid } from '../lib/format';
 import type { Expense, Friend, Settlement } from '../types';
@@ -12,9 +12,17 @@ const VIEW_KEY = 'kakeibo.expenses.view';
 const loadView = (): View => {
   try { return localStorage.getItem(VIEW_KEY) === 'date' ? 'date' : 'category'; } catch { return 'category'; }
 };
+const SORT_KEY = 'kakeibo.expenses.sort';
+const SORTS: [GroupSort, string][] = [['custom', '自分の順'], ['count', '回数順'], ['amount', '金額順']];
+const loadSort = (): GroupSort => {
+  try {
+    const v = localStorage.getItem(SORT_KEY);
+    return v === 'count' || v === 'amount' ? v : 'custom';
+  } catch { return 'custom'; }
+};
 const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
 
-export function Expenses() {
+export function Expenses({ goSettings }: { goSettings: () => void }) {
   const { data, update } = useStore();
   const [ym, setYm] = useState(ymOf(today()));
   const [editing, setEditing] = useState<Expense | 'new' | null>(null);
@@ -23,7 +31,12 @@ export function Expenses() {
     setViewState(v);
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* 保存できなくても表示は切り替える */ }
   };
-  const groups = categoryBreakdown(data, ym);
+  const [sort, setSortState] = useState<GroupSort>(loadSort);
+  const setSort = (v: GroupSort) => {
+    setSortState(v);
+    try { localStorage.setItem(SORT_KEY, v); } catch { /* 保存できなくても並びは変える */ }
+  };
+  const groups = sortGroups(categoryBreakdown(data, ym), sort, data.settings.categories);
   const monthTotal = groups.reduce((s, g) => s + g.amount, 0);
   const list = expensesInMonth(data.expenses, ym).sort((a, b) => b.date.localeCompare(a.date));
   const total = list.reduce((s, e) => s + e.amount, 0);
@@ -57,6 +70,17 @@ export function Expenses() {
             <div>今月の支出 <b className="num">{formatYen(monthTotal)}</b></div>
             <button className="btn primary" onClick={() => setEditing('new')}>+ 記録する</button>
           </div>
+          {groups.length > 1 && (
+            <div className="sort-row">
+              <span className="muted">並び</span>
+              <div className="seg three small">
+                {SORTS.map(([v, l]) => (
+                  <button key={v} className={sort === v ? 'on' : ''} aria-pressed={sort === v} onClick={() => setSort(v)}>{l}</button>
+                ))}
+              </div>
+              {sort === 'custom' && <button className="link small-link" onClick={goSettings}>順番を変える</button>}
+            </div>
+          )}
           {groups.length === 0 && <p className="empty">この月の記録はまだありません</p>}
           {groups.map((g) => (
             <CategoryCard key={g.category} group={g} share={monthTotal > 0 ? g.amount / monthTotal : 0} onEdit={setEditing} />
