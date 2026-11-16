@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import { normalize, SUGGESTED_CATEGORIES } from '../lib/storage';
 import { addCategory, moveCategory, removeCategory, renameCategory, usageCount, FALLBACK_CATEGORY } from '../lib/categories';
-import type { AppData } from '../types';
+import type { AppData, CardRule } from '../types';
+import { dayLabel, ruleLabel } from '../lib/card';
 import { today } from '../lib/date';
 import { CloudSync } from '../components/CloudSync';
 
@@ -10,6 +11,7 @@ export function Settings() {
   const { data, update, replace } = useStore();
   const { settings } = data;
   const [newCat, setNewCat] = useState('');
+  const [newPay, setNewPay] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const suggestions = SUGGESTED_CATEGORIES.filter((c) => !settings.categories.includes(c));
   const setS = (patch: Partial<typeof settings>) => update((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
@@ -65,15 +67,82 @@ export function Settings() {
       </section>
 
       <section className="card">
+        <h2>毎月の支出の目安</h2>
+        <p className="note">ホームのグラフの目盛りと目安の線は、この額を基準にします(2万円なら 1万・2万・3万…)</p>
+        <div className="row target-input">
+          <input type="number" inputMode="numeric" min="0" step="1000" value={settings.monthlyTarget || ''} placeholder="20000"
+            onChange={(e) => setS({ monthlyTarget: Number(e.target.value) || 0 })} />
+          <span>円 / 月</span>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>支払い方法</h2>
+        <p className="note">クレジットカードなどを登録すると、記録タブの「支払い別」でカードごとの合計がわかります。カードの締め日と支払日を入れると、引き落とし額も出ます</p>
+        <ul className="list cat-settings">
+          {settings.paymentMethods.map((p) => (
+            <PaymentRow key={p} name={p} rule={settings.cardRules?.[p]}
+              onRule={(r) => {
+                const cardRules = { ...(settings.cardRules ?? {}) };
+                if (r) cardRules[p] = r;
+                else delete cardRules[p];
+                setS({ cardRules });
+              }}
+              onRemove={() => {
+                if (!confirm(`「${p}」を一覧から消しますか?(記録やサブスクに付けた支払い方法はそのまま残ります)`)) return;
+                const cardRules = { ...(settings.cardRules ?? {}) };
+                delete cardRules[p];
+                setS({ paymentMethods: settings.paymentMethods.filter((x) => x !== p), cardRules });
+              }} />
+          ))}
+        </ul>
+        <form className="toolbar" onSubmit={(e) => {
+          e.preventDefault();
+          const v = newPay.trim();
+          if (v && !settings.paymentMethods.includes(v)) setS({ paymentMethods: [...settings.paymentMethods, v] });
+          setNewPay('');
+        }}>
+          <input value={newPay} onChange={(e) => setNewPay(e.target.value)} placeholder="例: 楽天カード" />
+          <button className="btn">追加</button>
+        </form>
+      </section>
+
+      <section className="card">
         <h2>サブスクの見直し基準</h2>
         <div className="form">
-          <label>1時間あたりのコストがこの額を超えたら(円)
-            <input type="number" min="0" value={settings.reviewCostPerHour} onChange={(e) => setS({ reviewCostPerHour: Number(e.target.value) })} />
-          </label>
-          <label>最後に使ってからこの日数がたったら(日)
+          <label>最後に「使った」を押してからこの日数がたったら(日)
             <input type="number" min="1" value={settings.reviewUnusedDays} onChange={(e) => setS({ reviewUnusedDays: Number(e.target.value) })} />
           </label>
         </div>
+        <p className="note">「ほぼ使わない」にしたサブスクも見直し候補になります</p>
+      </section>
+
+      <section className="card">
+        <h2>集計のしかた</h2>
+        <div className="form">
+          <div className="field">
+            <span className="field-label">年払いのサブスク</span>
+            <div className="seg two">
+              <button type="button" className={settings.yearlyMode === 'spread' ? 'on' : ''} aria-pressed={settings.yearlyMode === 'spread'}
+                onClick={() => setS({ yearlyMode: 'spread' })}>毎月に分ける(÷12)</button>
+              <button type="button" className={settings.yearlyMode === 'billing' ? 'on' : ''} aria-pressed={settings.yearlyMode === 'billing'}
+                onClick={() => setS({ yearlyMode: 'billing' })}>請求した月にまとめる</button>
+            </div>
+          </div>
+        </div>
+        <details className="rules">
+          <summary>集計のくわしいルール</summary>
+          <ul>
+            <li>支出は「サブスク・固定費」と「日々の支出」(記録タブで記録したもの)に分けて集計します</li>
+            <li>年払いのサブスクは、上の設定に応じて毎月 1/12 ずつ、または開始日の月にまとめて計上します。毎月に分けると月ごとの比較がしやすく、まとめると実際にお金が出ていく月がわかります</li>
+            <li>サブスクは開始日の月から計上します。スイッチをオフにした月までは計上し、翌月からは計上しません。あとでオンに戻しても、オフだった月は計上されません</li>
+            <li>サブスクを削除すると、過去の月の集計からも消えます</li>
+            <li>年の集計は、今年なら今月までです(先の月のサブスクを見込みで足しません)。前年比は前年の同じ月までと比べます</li>
+            <li>友達と立て替えた支出は、自分の分だけを支出として計上します。友達が立て替えてくれた分も、その日の支出として計上し、同じ額を「借り」として記録します</li>
+            <li>クレジットカードの引き落とし額は、締め日までの利用を締め日の翌月(または翌々月)の支払日にまとめます。サブスクは実際の請求日に全額で数えます(年払いの「毎月に分ける」設定とは関係ありません)。友達が立て替えた分は含めず、自分が立て替えた分はお会計の合計で数えます。締め日前のものは「見込み」です</li>
+            <li>カテゴリの予算は月の予算です。年で見るときは12倍(今年は今月までの月数倍)で比べます</li>
+          </ul>
+        </details>
       </section>
 
       <CloudSync />
@@ -146,6 +215,60 @@ function CategoryRow({ name, data, first, last, onlyOne, update }: {
           });
         }} />
       <button className="icon-btn" disabled={onlyOne} aria-label={`${name}を削除`} onClick={remove}>×</button>
+    </li>
+  );
+}
+
+const DAYS = [...Array.from({ length: 28 }, (_, i) => i + 1), 31];
+
+/** 支払い方法1つ分。カードなら締め日・支払日を設定できる */
+function PaymentRow({ name, rule, onRule, onRemove }: {
+  name: string;
+  rule?: CardRule;
+  onRule: (r: CardRule | undefined) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const r = rule ?? { closingDay: 31, payDay: 27, payMonths: 1 as const };
+  const set = (patch: Partial<CardRule>) => onRule({ ...r, ...patch });
+  return (
+    <li className="pay-row">
+      <div className="row">
+        <button className="link left grow cat-name-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {name}
+          <small className="pay-rule">{rule ? ruleLabel(rule) : '締め日なし'}</small>
+        </button>
+        <button className="icon-btn" aria-label={`${name}を削除`} onClick={onRemove}>×</button>
+      </div>
+      {open && (
+        <div className="pay-edit">
+          {!rule ? (
+            <button className="btn small" onClick={() => onRule(r)}>締め日・支払日を設定する(クレジットカード)</button>
+          ) : (
+            <>
+              <div className="pay-fields">
+                <label>締め日
+                  <select value={r.closingDay} onChange={(e) => set({ closingDay: Number(e.target.value) })}>
+                    {DAYS.map((d) => <option key={d} value={d}>{dayLabel(d)}</option>)}
+                  </select>
+                </label>
+                <label>引き落とし
+                  <select value={r.payMonths} onChange={(e) => set({ payMonths: Number(e.target.value) as 1 | 2 })}>
+                    <option value={1}>翌月</option>
+                    <option value={2}>翌々月</option>
+                  </select>
+                </label>
+                <label>支払日
+                  <select value={r.payDay} onChange={(e) => set({ payDay: Number(e.target.value) })}>
+                    {DAYS.map((d) => <option key={d} value={d}>{dayLabel(d)}</option>)}
+                  </select>
+                </label>
+              </div>
+              <button className="link small-link" onClick={() => onRule(undefined)}>締め日の設定をやめる(現金など)</button>
+            </>
+          )}
+        </div>
+      )}
     </li>
   );
 }

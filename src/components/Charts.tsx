@@ -1,9 +1,10 @@
-import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
-import type { CategoryTotal, MonthSummary } from '../lib/calc';
+import { Bar, BarChart, CartesianGrid, LabelList, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from 'recharts';
+import { axisTicks, SUBSCRIPTION_LABEL, VARIABLE_LABEL, type CategoryTotal, type MonthSummary } from '../lib/calc';
 import { formatYen } from '../lib/format';
 
 const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '');
-const compactYen = (n: number) => (n >= 10000 ? `${trim(n / 10000)}万` : n >= 1000 ? `${trim(n / 1000)}千` : `${Math.round(n)}`);
+/** 1万円単位で表示 (千円単位はキリが悪く読みにくいため使わない) */
+export const compactYen = (n: number) => (n === 0 ? '0' : n >= 10000 ? `${trim(n / 10000)}万` : `${Math.round(n).toLocaleString()}`);
 
 /** カテゴリ別の横棒。金額を棒の右に直接表示する (円グラフより金額が読みやすい) */
 export function CategoryBars({ data }: { data: CategoryTotal[] }) {
@@ -33,25 +34,33 @@ export function CategoryBars({ data }: { data: CategoryTotal[] }) {
   );
 }
 
-/** 月別推移: 固定費と単発支出の積み上げ縦棒、合計を上に表示 */
-export function TrendChart({ data }: { data: MonthSummary[] }) {
+/** 月別推移: 固定費と日々の支出の積み上げ縦棒、合計を上に表示。目盛りは毎月の目安が基準で、目安の線を引く */
+export function TrendChart({ data, target }: { data: MonthSummary[]; target: number }) {
   const rows = data.map((d) => ({ ...d, label: `${Number(d.ym.slice(5))}月` }));
+  const ticks = axisTicks(Math.max(0, ...data.map((d) => d.total)), target);
+  const many = rows.length > 6;
   return (
     <div className="chart">
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={rows} margin={{ top: 20, right: 4, left: -8, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--grid)" />
-          <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: 'var(--muted)', fontSize: 12 }} />
-          <YAxis domain={[0, (max: number) => Math.ceil(max * 1.15)]} tickFormatter={compactYen} tickLine={false} axisLine={false} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={44} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} interval={0} tick={{ fill: 'var(--muted)', fontSize: many ? 10 : 12 }} />
+          <YAxis domain={[0, ticks[ticks.length - 1]]} ticks={ticks} tickFormatter={compactYen} tickLine={false} axisLine={false} tick={{ fill: 'var(--muted)', fontSize: 11 }} width={44} />
           <Tooltip
             formatter={(v: number) => formatYen(v)}
             contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
             cursor={{ fill: 'var(--hover)' }}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="subscriptions" name="サブスク・固定費" stackId="a" fill="var(--c1)" />
-          <Bar dataKey="expenses" name="単発支出" stackId="a" fill="var(--c2)" radius={[4, 4, 0, 0]}>
-            <LabelList dataKey="total" position="top" formatter={(v: number) => (v > 0 ? compactYen(v) : '')} style={{ fill: 'var(--text)', fontSize: 11 }} />
+          {target > 0 && (
+            <ReferenceLine y={target} stroke="var(--text)" strokeOpacity={0.5} strokeDasharray="4 3"
+              label={{ value: '目安', position: 'insideTopRight', fill: 'var(--muted)', fontSize: 11 }} />
+          )}
+          <Bar dataKey="subscriptions" name={SUBSCRIPTION_LABEL} stackId="a" fill="var(--c1)" />
+          <Bar dataKey="expenses" name={VARIABLE_LABEL} stackId="a" fill="var(--c2)" radius={[4, 4, 0, 0]}>
+            {!many && (
+              <LabelList dataKey="total" position="top" formatter={(v: number) => (v > 0 ? compactYen(v) : '')} style={{ fill: 'var(--text)', fontSize: 11 }} />
+            )}
           </Bar>
         </BarChart>
       </ResponsiveContainer>

@@ -37,10 +37,10 @@ describe('merge3', () => {
   });
   it('merges settings per field', () => {
     const base = emptyData();
-    const local = { ...base, settings: { ...base.settings, reviewCostPerHour: 800, budgets: { 外食: 10000 } } };
+    const local = { ...base, settings: { ...base.settings, monthlyTarget: 30000, budgets: { 外食: 10000 } } };
     const remote = { ...base, settings: { ...base.settings, reviewUnusedDays: 60, budgets: { 食費: 30000 } } };
     const r = merge3(base, local, remote).settings;
-    expect(r.reviewCostPerHour).toBe(800);
+    expect(r.monthlyTarget).toBe(30000);
     expect(r.reviewUnusedDays).toBe(60);
     expect(r.budgets).toEqual({ 外食: 10000, 食費: 30000 });
   });

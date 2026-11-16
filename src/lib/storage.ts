@@ -14,7 +14,15 @@ export function emptyData(): AppData {
     expenses: [],
     friends: [],
     repayments: [],
-    settings: { categories: DEFAULT_CATEGORIES, budgets: {}, reviewCostPerHour: 500, reviewUnusedDays: 30 },
+    settings: {
+      categories: DEFAULT_CATEGORIES,
+      budgets: {},
+      reviewUnusedDays: 30,
+      monthlyTarget: 20000,
+      yearlyMode: 'spread',
+      paymentMethods: ['現金'],
+      cardRules: {},
+    },
   };
 }
 

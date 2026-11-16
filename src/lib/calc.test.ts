@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  billingDateInMonth, categoryBreakdown, sortGroups, type GroupSort, type LedgerItem, categoryTotals, costPerHour, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
-  nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL,
+  billingDateInMonth, categoryBreakdown, sortGroups, type GroupSort, type LedgerItem, categoryTotals, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
+  nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL, amountInMonth, turnOff, turnOn, isOn, markUsed, usesInLast, monthsOfYear, yearTrend,
+  paymentBreakdown, NO_PAYMENT_LABEL, axisTicks,
 } from './calc';
 import { emptyData } from './storage';
 import type { Expense, Subscription } from '../types';
@@ -41,7 +42,7 @@ describe('月の集計', () => {
     expenses: [exp({ amount: 3000 }), exp({ amount: 1500, category: '食費' }), exp({ date: '2026-10-30', amount: 9999 })],
   };
 
-  it('固定費と単発支出の合計', () => {
+  it('固定費と日々の支出の合計', () => {
     expect(monthSummary(data, '2026-11')).toEqual({ ym: '2026-11', subscriptions: 2000, expenses: 4500, total: 6500 });
   });
 
@@ -76,27 +77,112 @@ describe('友達との貸し借り', () => {
 });
 
 describe('見直し候補', () => {
-  const settings = { ...emptyData().settings, reviewCostPerHour: 500, reviewUnusedDays: 30 };
+  const settings = { ...emptyData().settings, reviewUnusedDays: 30 };
   const today = '2026-11-12';
 
-  it('1時間あたりのコスト', () => {
-    expect(costPerHour(sub({ amount: 1200, usageHoursPerMonth: 4 }))).toBe(300);
-    expect(costPerHour(sub({ usageHoursPerMonth: 0 }))).toBe(Infinity);
-    expect(costPerHour(sub({}))).toBeNull();
-  });
-
-  it('長期間未使用・高コスト・未入力を検出し、深刻なものを優先する', () => {
+  it('長期間使っていない・ほぼ使わない・記録なしを検出し、節約額の大きい順', () => {
     const subs = [
-      sub({ name: 'ok', amount: 1000, usageHoursPerMonth: 10, lastUsedAt: '2026-11-10' }),
-      sub({ name: 'nodata', amount: 5000, lastUsedAt: '2026-11-10' }),
-      sub({ name: 'unused', amount: 500, usageHoursPerMonth: 10, lastUsedAt: '2026-09-01' }),
-      sub({ name: 'costly', amount: 2000, usageHoursPerMonth: 1, lastUsedAt: '2026-11-11' }),
-      sub({ name: 'ended', amount: 9999, endDate: '2026-10-01' }),
+      sub({ name: 'ok', amount: 1000, lastUsedAt: '2026-11-10' }),
+      sub({ name: 'rated', amount: 3000, usage: 'often' }),
+      sub({ name: 'never', amount: 5000 }),
+      sub({ name: 'unused', amount: 500, lastUsedAt: '2026-09-01' }),
+      sub({ name: 'rarely', amount: 2000, usage: 'rarely', lastUsedAt: '2026-11-11' }),
+      sub({ name: 'off', amount: 9999, endDate: '2026-10-01' }),
     ];
     const r = reviewCandidates(subs, settings, today);
-    expect(r.map((c) => c.sub.name)).toEqual(['costly', 'unused', 'nodata']);
-    expect(r[0].yearlySaving).toBe(24000);
-    expect(r[1].reasons).toEqual([{ kind: 'unused', days: 72 }]);
+    expect(r.map((c) => c.sub.name)).toEqual(['never', 'rarely', 'unused']);
+    expect(r[1].yearlySaving).toBe(24000);
+    expect(r[2].reasons).toEqual([{ kind: 'unused', days: 72 }]);
+  });
+
+  it('「今日使った」の回数を数え、90日より前は捨てる', () => {
+    let s = sub({ usedDates: ['2026-07-01', '2026-10-20', '2026-11-01'] });
+    s = markUsed(s, today);
+    expect(s.lastUsedAt).toBe(today);
+    expect(s.usedDates).toEqual(['2026-10-20', '2026-11-01', today]);
+    expect(usesInLast(s, today)).toBe(3);
+    expect(markUsed(s, today).usedDates).toHaveLength(3); // 同じ日は1回
+  });
+});
+
+describe('オン/オフ', () => {
+  it('オフにした月までは集計し、翌月からは集計しない', () => {
+    const s = turnOff(sub({ startDate: '2026-01-01' }), '2026-06-15');
+    expect(isOn(s, '2026-06-14')).toBe(true);
+    expect(isOn(s, '2026-06-15')).toBe(false);
+    expect(isActiveInMonth(s, '2026-06')).toBe(true);
+    expect(isActiveInMonth(s, '2026-07')).toBe(false);
+  });
+
+  it('同じ月に戻したらオフを取り消す', () => {
+    const s = turnOn(turnOff(sub({}), '2026-06-15'), '2026-06-20');
+    expect(s.endDate).toBeUndefined();
+    expect(s.history).toBeUndefined();
+  });
+
+  it('後の月に戻したら、過去の期間を残して今日から再開する', () => {
+    const s = turnOn(turnOff(sub({ startDate: '2026-01-01' }), '2026-03-10'), '2026-08-05');
+    expect(s.startDate).toBe('2026-08-05');
+    expect(s.history).toEqual([{ start: '2026-01-01', end: '2026-03-10' }]);
+    expect(['2026-02', '2026-03', '2026-05', '2026-08'].map((ym) => isActiveInMonth(s, ym))).toEqual([true, true, false, true]);
+  });
+});
+
+describe('年払いの計上方法', () => {
+  const y = sub({ amount: 12000, cycle: 'yearly', startDate: '2026-03-01' });
+  it('月割り: 毎月 1/12', () => {
+    expect(amountInMonth(y, '2026-05', 'spread')).toBe(1000);
+  });
+  it('請求月にまとめて: 請求月だけ全額', () => {
+    expect(amountInMonth(y, '2027-03', 'billing')).toBe(12000);
+    expect(amountInMonth(y, '2026-05', 'billing')).toBe(0);
+  });
+});
+
+describe('年間の集計', () => {
+  it('今年は今月まで、来年は空', () => {
+    expect(monthsOfYear(2026, '2026-03')).toEqual(['2026-01', '2026-02', '2026-03']);
+    expect(monthsOfYear(2025, '2026-03')).toHaveLength(12);
+    expect(monthsOfYear(2027, '2026-03')).toEqual([]);
+  });
+  it('1年分の推移は12ヶ月で、先の月は0', () => {
+    const data = { ...emptyData(), subscriptions: [sub({ amount: 1000, startDate: '2025-01-01' })] };
+    const t = yearTrend(data, 2026, '2026-03');
+    expect(t).toHaveLength(12);
+    expect(t.map((m) => m.total).slice(0, 4)).toEqual([1000, 1000, 1000, 0]);
+  });
+  it('複数月の分類別: サブスクは1行にまとめ、予算は月数倍', () => {
+    const data = {
+      ...emptyData(),
+      settings: { ...emptyData().settings, budgets: { 外食: 1000 } },
+      expenses: [exp({ date: '2026-01-05', amount: 500 }), exp({ date: '2026-02-05', amount: 700 })],
+      subscriptions: [sub({ name: 'a', amount: 1000, startDate: '2025-01-01' })],
+    };
+    const g = categoryBreakdown(data, ['2026-01', '2026-02', '2026-03']);
+    expect(g.map((x) => [x.category, x.amount, x.budget])).toEqual([[SUBSCRIPTION_LABEL, 3000, undefined], ['外食', 1200, 3000]]);
+    expect(g[0].items).toMatchObject([{ kind: 'sub', date: null, count: 3 }]);
+  });
+});
+
+describe('支払い方法別', () => {
+  it('記録とサブスクをカードごとにまとめ、未設定は最後', () => {
+    const data = {
+      ...emptyData(),
+      expenses: [exp({ amount: 3000, payment: '楽天カード' }), exp({ amount: 9000 }), exp({ amount: 500, payment: '現金' })],
+      subscriptions: [sub({ amount: 1000, payment: '楽天カード' })],
+    };
+    const g = paymentBreakdown(data, '2026-11');
+    expect(g.map((x) => [x.category, x.amount])).toEqual([['楽天カード', 4000], ['現金', 500], [NO_PAYMENT_LABEL, 9000]]);
+  });
+});
+
+describe('グラフの目盛り', () => {
+  it('目安の半分きざみ、目安までは必ず出す', () => {
+    expect(axisTicks(7000, 20000)).toEqual([0, 10000, 20000]);
+    expect(axisTicks(26000, 20000)).toEqual([0, 10000, 20000, 30000]);
+  });
+  it('多すぎるときは間隔を倍にする', () => {
+    expect(axisTicks(140000, 20000)).toEqual([0, 40000, 80000, 120000, 160000]);
   });
 });
 
