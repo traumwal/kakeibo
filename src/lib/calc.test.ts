@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  categoryTotals, costPerHour, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
+  billingDateInMonth, categoryBreakdown, categoryTotals, costPerHour, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
   nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL,
 } from './calc';
 import { emptyData } from './storage';
@@ -97,5 +97,31 @@ describe('見直し候補', () => {
     expect(r.map((c) => c.sub.name)).toEqual(['costly', 'unused', 'nodata']);
     expect(r[0].yearlySaving).toBe(24000);
     expect(r[1].reasons).toEqual([{ kind: 'unused', days: 72 }]);
+  });
+});
+
+describe('分類別の明細', () => {
+  it('分類ごとに金額の大きい順、明細は日付順。サブスクは請求日つきでまとめる', () => {
+    const data = {
+      ...emptyData(),
+      expenses: [
+        exp({ date: '2026-11-20', amount: 700, category: '外食' }),
+        exp({ date: '2026-11-03', amount: 1500, category: '外食' }),
+        exp({ date: '2026-11-10', amount: 800, category: '日用品' }),
+        exp({ date: '2026-10-31', amount: 9999, category: '外食' }),
+      ],
+      subscriptions: [sub({ name: 'a', amount: 1000, billingDay: 25 }), sub({ name: 'b', amount: 12000, cycle: 'yearly', startDate: '2026-03-01' })],
+    };
+    const groups = categoryBreakdown(data, '2026-11');
+    expect(groups.map((g) => [g.category, g.amount])).toEqual([['外食', 2200], [SUBSCRIPTION_LABEL, 2000], ['日用品', 800]]);
+    expect(groups[0].items.map((i) => i.date)).toEqual(['2026-11-03', '2026-11-20']);
+    // 年払いで今月請求がないものは日付なし(月割り)で最後
+    expect(groups[1].items.map((i) => i.date)).toEqual(['2026-11-25', null]);
+  });
+
+  it('年払いは開始月に請求日が入る', () => {
+    const s = sub({ cycle: 'yearly', startDate: '2026-03-01', billingDay: 31 });
+    expect(billingDateInMonth(s, '2027-03')).toBe('2027-03-31');
+    expect(billingDateInMonth(s, '2027-04')).toBeNull();
   });
 });

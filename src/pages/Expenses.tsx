@@ -1,15 +1,30 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { expensesInMonth } from '../lib/calc';
+import { categoryBreakdown, expensesInMonth, type CategoryGroup, type LedgerItem } from '../lib/calc';
 import { addMonths, formatYm, today, ymOf } from '../lib/date';
 import { formatYen, uid } from '../lib/format';
 import type { Expense, Friend, Settlement } from '../types';
 import { Modal } from '../components/Modal';
+import { SubIcon } from '../components/SubIcon';
+
+type View = 'category' | 'date';
+const VIEW_KEY = 'kakeibo.expenses.view';
+const loadView = (): View => {
+  try { return localStorage.getItem(VIEW_KEY) === 'date' ? 'date' : 'category'; } catch { return 'category'; }
+};
+const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
 
 export function Expenses() {
   const { data, update } = useStore();
   const [ym, setYm] = useState(ymOf(today()));
   const [editing, setEditing] = useState<Expense | 'new' | null>(null);
+  const [view, setViewState] = useState<View>(loadView);
+  const setView = (v: View) => {
+    setViewState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* 保存できなくても表示は切り替える */ }
+  };
+  const groups = categoryBreakdown(data, ym);
+  const monthTotal = groups.reduce((s, g) => s + g.amount, 0);
   const list = expensesInMonth(data.expenses, ym).sort((a, b) => b.date.localeCompare(a.date));
   const total = list.reduce((s, e) => s + e.amount, 0);
   const friendName = (id: string) => data.friends.find((f) => f.id === id)?.name ?? '(削除済み)';
@@ -31,33 +46,48 @@ export function Expenses() {
         <h1>{formatYm(ym)}の記録</h1>
         <button className="icon-btn" onClick={() => setYm(addMonths(ym, 1))} aria-label="次の月">›</button>
       </div>
-      <div className="toolbar">
-        <div>単発支出 <b className="num">{formatYen(total)}</b>({list.length}件)</div>
-        <button className="btn primary" onClick={() => setEditing('new')}>+ 記録する</button>
+      <div className="seg two view-toggle" role="tablist">
+        <button role="tab" aria-selected={view === 'category'} className={view === 'category' ? 'on' : ''} onClick={() => setView('category')}>分類別</button>
+        <button role="tab" aria-selected={view === 'date'} className={view === 'date' ? 'on' : ''} onClick={() => setView('date')}>日付順</button>
       </div>
-      {list.length === 0 && <p className="empty">この月の記録はまだありません</p>}
-      <ul className="card list expenses">
-        {list.map((e) => (
-          <li key={e.id} onClick={() => setEditing(e)} className="clickable">
-            <div className="row">
-              <span className="date">{Number(e.date.slice(5, 7))}/{Number(e.date.slice(8))}</span>
-              <span className="grow">
-                <span className="chip">{e.category}</span> {e.memo}
-              </span>
-              <b className="num">{formatYen(e.amount)}</b>
-            </div>
-            {e.settlements?.length ? (
-              <div className="settle">
-                {e.settlements.map((s) => (
-                  <span key={s.friendId} className={s.type === 'friendPaid' ? 'owe' : 'lent'}>
-                    {s.type === 'friendPaid' ? `${friendName(s.friendId)}が立て替え(借り ${formatYen(s.amount)})` : `${friendName(s.friendId)}に貸し ${formatYen(s.amount)}`}
+
+      {view === 'category' ? (
+        <>
+          <div className="toolbar">
+            <div>今月の支出 <b className="num">{formatYen(monthTotal)}</b></div>
+            <button className="btn primary" onClick={() => setEditing('new')}>+ 記録する</button>
+          </div>
+          {groups.length === 0 && <p className="empty">この月の記録はまだありません</p>}
+          {groups.map((g) => (
+            <CategoryCard key={g.category} group={g} share={monthTotal > 0 ? g.amount / monthTotal : 0} onEdit={setEditing} />
+          ))}
+          {groups.some((g) => g.items.some((i) => i.kind === 'sub')) && (
+            <p className="note">サブスクは請求日に計上。年払いは月額に換算(÷12)しています。編集はサブスクのタブから</p>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="toolbar">
+            <div>単発支出 <b className="num">{formatYen(total)}</b>({list.length}件)</div>
+            <button className="btn primary" onClick={() => setEditing('new')}>+ 記録する</button>
+          </div>
+          {list.length === 0 && <p className="empty">この月の記録はまだありません</p>}
+          <ul className="card list expenses">
+            {list.map((e) => (
+              <li key={e.id} onClick={() => setEditing(e)} className="clickable">
+                <div className="row">
+                  <span className="date">{md(e.date)}</span>
+                  <span className="grow">
+                    <span className="chip">{e.category}</span> {e.memo}
                   </span>
-                ))}
-              </div>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+                  <b className="num">{formatYen(e.amount)}</b>
+                </div>
+                <SettleLine expense={e} friendName={friendName} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <button className="fab" onClick={() => setEditing('new')} aria-label="支出を記録">+</button>
 
       {editing && (
@@ -75,6 +105,78 @@ export function Expenses() {
         />
       )}
     </div>
+  );
+}
+
+function SettleLine({ expense, friendName }: { expense: Expense; friendName: (id: string) => string }) {
+  if (!expense.settlements?.length) return null;
+  return (
+    <div className="settle">
+      {expense.settlements.map((s) => (
+        <span key={s.friendId} className={s.type === 'friendPaid' ? 'owe' : 'lent'}>
+          {s.type === 'friendPaid' ? `${friendName(s.friendId)}が立て替え(借り ${formatYen(s.amount)})` : `${friendName(s.friendId)}に貸し ${formatYen(s.amount)}`}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** 分類1つ分: 見出しに合計・割合・予算の残り、下にいつ何に払ったかの明細 */
+function CategoryCard({ group, share, onEdit }: { group: CategoryGroup; share: number; onEdit: (e: Expense) => void }) {
+  const [open, setOpen] = useState(true);
+  const { budget, amount } = group;
+  const over = budget != null && amount > budget;
+  return (
+    <section className="card cat-card">
+      <button className="cat-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="grow">
+          <span className="cat-name">{group.category}</span>
+          <span className="cat-meta">
+            {group.items.length}件 · {Math.round(share * 100)}%
+            {budget != null && (
+              <span className={over ? 'over' : ''}> · {over ? `予算を${formatYen(amount - budget)}超過` : `予算の残り ${formatYen(budget - amount)}`}</span>
+            )}
+          </span>
+        </span>
+        <b className={over ? 'num cat-total over' : 'num cat-total'}>{formatYen(amount)}</b>
+        <span className="chev" aria-hidden>{open ? '⌃' : '⌄'}</span>
+      </button>
+      {budget != null && (
+        <div className="hbar-track cat-bar">
+          <div className={over ? 'hbar-fill over' : 'hbar-fill'} style={{ width: `${Math.min(100, (amount / budget) * 100)}%` }} />
+        </div>
+      )}
+      {open && (
+        <ul className="list cat-items">
+          {group.items.map((item) => <LedgerRow key={item.kind === 'sub' ? `s-${item.sub.id}` : item.expense.id} item={item} onEdit={onEdit} />)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function LedgerRow({ item, onEdit }: { item: LedgerItem; onEdit: (e: Expense) => void }) {
+  if (item.kind === 'sub') {
+    const s = item.sub;
+    return (
+      <li className="row">
+        <span className="date">{item.date ? md(item.date) : '月割'}</span>
+        <SubIcon name={s.name} domain={s.domain} size={22} />
+        <span className="grow ellipsis">{s.name}{s.cycle === 'yearly' && <small> 年払い {formatYen(s.amount)}</small>}</span>
+        <span className="num">{formatYen(item.amount)}</span>
+      </li>
+    );
+  }
+  const e = item.expense;
+  return (
+    <li className="row clickable" onClick={() => onEdit(e)}>
+      <span className="date">{md(e.date)}</span>
+      <span className="grow ellipsis">
+        {e.memo || <span className="muted">(メモなし)</span>}
+        {e.settlements?.length ? <small> {e.settlements[0].type === 'friendPaid' ? '立て替えてもらった' : '立て替えた'}</small> : null}
+      </span>
+      <span className="num">{formatYen(e.amount)}</span>
+    </li>
   );
 }
 
