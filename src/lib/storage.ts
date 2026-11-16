@@ -2,7 +2,10 @@ import type { AppData } from '../types';
 
 const KEY = 'kakeibo:v1';
 
-export const DEFAULT_CATEGORIES = ['外食', '食費', '交際費', '日用品', '交通', '娯楽', '衣服', 'その他'];
+/** 初めて使うときの分類。家賃・通信費などの固定費はサブスク側で扱うので入れていない */
+export const DEFAULT_CATEGORIES = ['外食', '食費', '日用品', '交通', '交際費', '趣味・娯楽', '衣服・美容', '医療・健康', '教育・自己投資', 'その他'];
+/** 設定画面の「おすすめから追加」に出す候補 */
+export const SUGGESTED_CATEGORIES = [...DEFAULT_CATEGORIES, 'カフェ', '旅行', '書籍', 'ガジェット', 'プレゼント', '住まい', 'ペット', '子ども'];
 
 export function emptyData(): AppData {
   return {

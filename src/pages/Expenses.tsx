@@ -264,7 +264,7 @@ function ExpenseForm({ initial, categories, friends, onSave, onClose, onDelete }
           <label>日付<input type="date" required value={date} onChange={(e) => setDate(e.target.value)} /></label>
           <label>カテゴリ
             <select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {categories.map((c) => <option key={c}>{c}</option>)}
+              {(categories.includes(category) ? categories : [...categories, category]).map((c) => <option key={c}>{c}</option>)}
             </select>
           </label>
         </div>
