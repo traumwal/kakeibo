@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import { normalize } from '../lib/storage';
 import { today } from '../lib/date';
+import { CloudSync } from '../components/CloudSync';
 
 export function Settings() {
   const { data, update, replace } = useStore();
@@ -76,9 +77,11 @@ export function Settings() {
         </div>
       </section>
 
+      <CloudSync />
+
       <section className="card">
         <h2>バックアップ</h2>
-        <p className="note">データはこの端末のブラウザの中にだけ保存されています。機種変更やブラウザのデータ削除に備えて、ときどき書き出しておきましょう。</p>
+        <p className="note">クラウド同期を使わない場合、データはこの端末のブラウザの中にだけ保存されます。機種変更やブラウザのデータ削除に備えて、ときどき書き出しておきましょう。</p>
         <div className="actions">
           <button className="btn" onClick={exportJson}>JSONで書き出す</button>
           <button className="btn" onClick={() => fileRef.current?.click()}>JSONを読み込む</button>
