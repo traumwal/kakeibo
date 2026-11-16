@@ -162,3 +162,54 @@ export function sortSubscriptions(subs: Subscription[], todayStr: string): Subsc
   });
 }
 
+
+/** 分類別の明細1行。サブスクは今月の請求日 (年払いで今月請求がなければ null = 月割り分) */
+export type LedgerItem =
+  | { kind: 'expense'; date: string; amount: number; expense: Expense }
+  | { kind: 'sub'; date: string | null; amount: number; sub: Subscription };
+
+export interface CategoryGroup extends CategoryTotal {
+  items: LedgerItem[];
+}
+
+/** その月の請求日。年払いは開始月にだけ請求 */
+export function billingDateInMonth(sub: Subscription, ym: string): string | null {
+  if (!isActiveInMonth(sub, ym)) return null;
+  if (sub.cycle === 'yearly' && sub.startDate.slice(5, 7) !== ym.slice(5, 7)) return null;
+  return clampDay(ym, sub.billingDay);
+}
+
+/** 分類別の明細。金額は categoryTotals と同じ (サブスクは1つの分類・月額換算)。分類は金額の大きい順、明細は日付順 */
+export function categoryBreakdown(data: AppData, ym: string): CategoryGroup[] {
+  const map = new Map<string, LedgerItem[]>();
+  const push = (cat: string, item: LedgerItem) => map.set(cat, [...(map.get(cat) ?? []), item]);
+  for (const e of expensesInMonth(data.expenses, ym)) push(e.category, { kind: 'expense', date: e.date, amount: e.amount, expense: e });
+  for (const s of data.subscriptions.filter((x) => isActiveInMonth(x, ym))) {
+    push(SUBSCRIPTION_LABEL, { kind: 'sub', date: billingDateInMonth(s, ym), amount: monthlyAmount(s), sub: s });
+  }
+  return [...map.entries()]
+    .map(([category, items]) => ({
+      category,
+      amount: items.reduce((s, i) => s + i.amount, 0),
+      budget: data.settings.budgets[category],
+      items: items.sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999')),
+    }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+/** custom: 設定の分類の順 (サブスク・設定にない分類は後ろ) / count: 記録の回数が多い順 / amount: 金額の大きい順 */
+export type GroupSort = 'custom' | 'count' | 'amount';
+
+export function sortGroups(groups: CategoryGroup[], mode: GroupSort, order: string[]): CategoryGroup[] {
+  const rank = (g: CategoryGroup) => {
+    const i = order.indexOf(g.category);
+    return i >= 0 ? i : g.category === SUBSCRIPTION_LABEL ? order.length + 1 : order.length;
+  };
+  const cmp: Record<GroupSort, (a: CategoryGroup, b: CategoryGroup) => number> = {
+    custom: (a, b) => rank(a) - rank(b),
+    count: (a, b) => b.items.length - a.items.length,
+    amount: () => 0,
+  };
+  // 同じ順位のときは金額の大きい順
+  return [...groups].sort((a, b) => cmp[mode](a, b) || b.amount - a.amount);
+}
