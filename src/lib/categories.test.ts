@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCategory, moveCategory, removeCategory, renameCategory } from './categories';
+import { addCategory, guessCategory, moveCategory, removeCategory, renameCategory, subCategoryOptions } from './categories';
 import { emptyData } from './storage';
 import type { AppData, Expense } from '../types';
 
@@ -46,5 +46,33 @@ describe('分類の編集', () => {
     expect(moveCategory(make(['a', 'b']), 'a', -1).settings.categories).toEqual(['a', 'b']);
     expect(addCategory(make(['a', 'その他']), ' 趣味 ').settings.categories).toEqual(['a', '趣味', 'その他']);
     expect(addCategory(make(['a']), 'a').settings.categories).toEqual(['a']);
+  });
+});
+
+describe('サブスクの分類', () => {
+  it('名前から分類を推測する', () => {
+    expect(guessCategory('JR 定期券')).toBe('交通');
+    expect(guessCategory('Netflix プレミアム')).toBe('趣味・娯楽');
+    expect(guessCategory('ChatGPT Plus')).toBe('AI・ツール');
+    expect(guessCategory('Claude Pro')).toBe('AI・ツール');
+    expect(guessCategory('au')).toBe('通信費');
+    expect(guessCategory('chocoZAP')).toBe('医療・健康');
+    expect(guessCategory('よくわからないもの')).toBeUndefined();
+    expect(guessCategory('ガウチョ')).toBeUndefined(); // 短い英字 au は部分一致しない
+  });
+
+  it('分類を削除するとサブスクも「その他」に移る', () => {
+    const d = make(['趣味・娯楽', 'その他']);
+    const s = { id: 'n', name: 'Netflix', amount: 1000, cycle: 'monthly' as const, billingDay: 1, category: '趣味・娯楽', startDate: '2026-01-01' };
+    const r = removeCategory({ ...d, subscriptions: [s] }, '趣味・娯楽');
+    expect(r.subscriptions[0].category).toBe('その他');
+  });
+
+  it('選択肢は記録用の分類と固定費の候補。未分類は最後', () => {
+    const o = subCategoryOptions(['外食', '交通', 'その他']);
+    expect(o.slice(0, 2)).toEqual(['外食', '交通']);
+    expect(o).toContain('AI・ツール');
+    expect(o.filter((c) => c === '交通')).toHaveLength(1);
+    expect(o.at(-1)).toBe('サブスク');
   });
 });

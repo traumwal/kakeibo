@@ -213,7 +213,7 @@ describe('分類別の明細', () => {
 });
 
 describe('分類の並び順', () => {
-  const g = (category: string, n: number, amount: number) => ({ category, amount, items: Array(n).fill(null) as LedgerItem[] });
+  const g = (category: string, n: number, amount: number) => ({ category, amount, fixed: 0, items: Array(n).fill(null) as LedgerItem[] });
   const groups = [g('交通', 1, 20000), g('外食', 5, 8000), g(SUBSCRIPTION_LABEL, 3, 3000), g('食費', 5, 12000)];
   const names = (mode: GroupSort) => sortGroups(groups, mode, ['外食', '食費', '交通']).map((x) => x.category);
 
@@ -225,5 +225,35 @@ describe('分類の並び順', () => {
   });
   it('金額順', () => {
     expect(names('amount')).toEqual(['交通', '食費', '外食', SUBSCRIPTION_LABEL]);
+  });
+});
+
+describe('サブスクの分類と集計', () => {
+  const data = {
+    ...emptyData(),
+    settings: { ...emptyData().settings, budgets: { 交通: 12000 } },
+    subscriptions: [
+      sub({ name: '定期券', amount: 10000, category: '交通' }),
+      sub({ name: 'Netflix', amount: 1500, category: '趣味・娯楽' }),
+      sub({ name: '昔の', amount: 500 }),
+    ],
+    expenses: [exp({ amount: 3000, category: '交通' }), exp({ amount: 800 })],
+  };
+
+  it('定期券は「交通」に固定費として入り、予算にも含まれる。未分類はサブスク・固定費', () => {
+    const c = categoryTotals(data, '2026-11');
+    expect(c.map((x) => [x.category, x.amount, x.fixed])).toEqual([
+      ['交通', 13000, 10000], ['趣味・娯楽', 1500, 1500], ['外食', 800, 0], [SUBSCRIPTION_LABEL, 500, 500],
+    ]);
+    expect(c[0].budget).toBe(12000);
+  });
+
+  it('上の合計 (固定費 / 日々の支出) は今まで通り', () => {
+    expect(monthSummary(data, '2026-11')).toMatchObject({ subscriptions: 12000, expenses: 3800 });
+  });
+
+  it('定期券・家賃は「使った」の記録がないだけでは見直し候補にしない', () => {
+    const r = reviewCandidates(data.subscriptions, data.settings, '2026-11-15');
+    expect(r.map((x) => x.sub.name).sort()).toEqual(['Netflix', '昔の']);
   });
 });

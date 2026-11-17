@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { today } from '../lib/date';
 import { uid } from '../lib/format';
 import { cleanDomain, guessDomain } from '../lib/logo';
+import { guessCategory, subCategoryLabel, subCategoryOptions, UNCLASSIFIED_SUB } from '../lib/categories';
 import type { Subscription } from '../types';
 import { Modal } from './Modal';
 import { SubIcon } from './SubIcon';
@@ -22,17 +23,25 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
     currency: initial?.currency ?? 'JPY',
     cycle: initial?.cycle ?? 'monthly',
     billingDay: String(initial?.billingDay ?? Number(t.slice(8))),
-    category: initial?.category ?? 'サブスク',
+    // 分類を選んでいない以前のサブスクは、名前から推測した分類を最初から選んでおく
+    category: initial && initial.category !== UNCLASSIFIED_SUB ? initial.category : guessCategory(initial?.name ?? '') ?? UNCLASSIFIED_SUB,
     startDate: initial?.startDate ?? t,
     payment: initial?.payment ?? '',
     memo: initial?.memo ?? '',
   });
   // 自動で入れたドメインは、名前を変えたら追従させる (手で入力したものは上書きしない)
   const [autoDomain, setAutoDomain] = useState(!initial?.domain);
+  // 分類も、自分で選ぶまでは名前から推測する
+  const [autoCategory, setAutoCategory] = useState(!initial || initial.category === UNCLASSIFIED_SUB);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
   const onName = (name: string) => {
-    setF((p) => ({ ...p, name, domain: autoDomain ? guessDomain(name) ?? '' : p.domain }));
+    setF((p) => ({
+      ...p,
+      name,
+      domain: autoDomain ? guessDomain(name) ?? '' : p.domain,
+      category: autoCategory ? guessCategory(name) ?? UNCLASSIFIED_SUB : p.category,
+    }));
   };
 
   const submit = (e: React.FormEvent) => {
@@ -85,8 +94,8 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
         <div className="grid2">
           <label>請求日<input type="number" min="1" max="31" value={f.billingDay} onChange={set('billingDay')} /></label>
           <label>分類
-            <select value={f.category} onChange={set('category')}>
-              {['サブスク', '家賃', '通信費', '光熱費', '保険', ...categories].filter((v, i, a) => a.indexOf(v) === i).map((c) => <option key={c}>{c}</option>)}
+            <select value={f.category} onChange={(e) => { setAutoCategory(false); set('category')(e); }}>
+              {subCategoryOptions(categories, f.category).map((c) => <option key={c} value={c}>{subCategoryLabel(c)}</option>)}
             </select>
           </label>
         </div>
@@ -99,6 +108,7 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
             </select>
           </label>
         </div>
+        <p className="note">分類は「何に使っているか」です。定期券なら「交通」、動画や音楽は「趣味・娯楽」、ChatGPT などは「AI・ツール」。カテゴリ別のグラフでは、その分類に固定費として入ります</p>
         {f.cycle === 'yearly' && <p className="note">年払いは開始日の月に請求される扱いです</p>}
         {f.currency === 'USD' && (
           <p className="note">円の額は請求日のレート(カードの海外手数料込み)で自動で換算します。カードの明細が来たら、詳細画面で実際の額に直せます</p>

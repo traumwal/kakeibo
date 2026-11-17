@@ -1,5 +1,6 @@
 import type { AppData, Expense, Friend, FxSettings, Period, Repayment, Settings, Subscription, YearlyMode } from '../types';
 import { yenCharge } from './fx';
+import { ESSENTIAL_SUB_CATEGORIES, UNCLASSIFIED_SUB } from './categories';
 import { addMonths, clampDay, daysBetween, monthEnd, monthStart, ymOf } from './date';
 
 export const SUBSCRIPTION_LABEL = 'サブスク・固定費';
@@ -169,12 +170,17 @@ export function yearTrend(data: CalcData, year: number, todayYm: string): MonthS
 export interface CategoryTotal {
   category: string;
   amount: number;
+  /** そのうちサブスク・固定費の分 (定期券なら「交通」の中の固定分) */
+  fixed: number;
   budget?: number;
 }
 
-/** 分類別合計 (サブスクは1つの棒にまとめる)。金額の大きい順。複数月なら予算も月数倍 */
+/** 集計でサブスクを入れる分類。分類を選んでいないものは「サブスク・固定費」にまとめる */
+export const subGroupOf = (sub: Subscription) => (!sub.category || sub.category === UNCLASSIFIED_SUB ? SUBSCRIPTION_LABEL : sub.category);
+
+/** 分類別合計 (サブスクは選んだ分類に入れる。定期券なら「交通」)。金額の大きい順。複数月なら予算も月数倍 */
 export function categoryTotals(data: CalcData, yms: string | string[]): CategoryTotal[] {
-  return categoryBreakdown(data, yms).map(({ category, amount, budget }) => ({ category, amount, budget }));
+  return categoryBreakdown(data, yms).map(({ category, amount, fixed, budget }) => ({ category, amount, fixed, budget }));
 }
 
 export interface FriendBalance {
@@ -230,8 +236,8 @@ export function reviewCandidates(subs: Subscription[], settings: Settings, today
     if (sub.lastUsedAt) {
       const days = daysBetween(sub.lastUsedAt, todayStr);
       if (days >= settings.reviewUnusedDays) reasons.push({ kind: 'unused', days });
-    } else if (!sub.usage && daysBetween(sub.startDate, todayStr) >= settings.reviewUnusedDays) {
-      // 「よく使う」「たまに」と答えていれば、記録がないだけでは候補にしない
+    } else if (!sub.usage && !ESSENTIAL_SUB_CATEGORIES.includes(sub.category) && daysBetween(sub.startDate, todayStr) >= settings.reviewUnusedDays) {
+      // 「よく使う」「たまに」と答えていれば、記録がないだけでは候補にしない。定期券・家賃なども記録がないだけでは候補にしない
       reasons.push({ kind: 'neverUsed' });
     }
     if (reasons.length) result.push({ sub, reasons, yearlySaving: yearlyAmount(sub, settings.fx) });
@@ -287,19 +293,20 @@ function toGroups(map: Map<string, LedgerItem[]>, budgetOf: (name: string) => nu
     .map(([category, items]) => ({
       category,
       amount: items.reduce((s, i) => s + i.amount, 0),
+      fixed: items.reduce((s, i) => s + (i.kind === 'sub' ? i.amount : 0), 0),
       budget: budgetOf(category),
       items: items.sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999')),
     }))
     .sort((a, b) => b.amount - a.amount);
 }
 
-/** 分類別の明細 (サブスクは1つの分類)。分類は金額の大きい順、明細は日付順 */
+/** 分類別の明細 (サブスクは選んだ分類に入る。未分類は「サブスク・固定費」)。分類は金額の大きい順、明細は日付順 */
 export function categoryBreakdown(data: CalcData, yms: string | string[]): CategoryGroup[] {
   const months = toList(yms);
   const map = new Map<string, LedgerItem[]>();
   const push = (cat: string, item: LedgerItem) => map.set(cat, [...(map.get(cat) ?? []), item]);
   for (const e of expensesInMonths(data.expenses, months)) push(e.category, { kind: 'expense', date: e.date, amount: e.amount, expense: e });
-  for (const item of subItems(data, months)) push(SUBSCRIPTION_LABEL, item);
+  for (const item of subItems(data, months)) push(item.kind === 'sub' ? subGroupOf(item.sub) : SUBSCRIPTION_LABEL, item);
   const budgets = data.settings.budgets;
   return toGroups(map, (c) => (budgets[c] != null ? budgets[c] * months.length : undefined));
 }
