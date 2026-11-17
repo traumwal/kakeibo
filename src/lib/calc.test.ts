@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  billingDateInMonth, categoryBreakdown, sortGroups, type GroupSort, type LedgerItem, categoryTotals, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
+  billingDateInMonth, categoryBreakdown, sortGroups, type LedgerItem, categoryTotals, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
   nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL, amountInMonth, turnOff, turnOn, isOn, markUsed, usesInLast, monthsOfYear, yearTrend,
   paymentBreakdown, NO_PAYMENT_LABEL, axisTicks,
 } from './calc';
@@ -215,16 +215,10 @@ describe('分類別の明細', () => {
 describe('分類の並び順', () => {
   const g = (category: string, n: number, amount: number) => ({ category, amount, fixed: 0, items: Array(n).fill(null) as LedgerItem[] });
   const groups = [g('交通', 1, 20000), g('外食', 5, 8000), g(SUBSCRIPTION_LABEL, 3, 3000), g('食費', 5, 12000)];
-  const names = (mode: GroupSort) => sortGroups(groups, mode, ['外食', '食費', '交通']).map((x) => x.category);
 
-  it('自分で決めた順。サブスクは最後', () => {
-    expect(names('custom')).toEqual(['外食', '食費', '交通', SUBSCRIPTION_LABEL]);
-  });
-  it('回数順(同じ回数なら金額順)', () => {
-    expect(names('count')).toEqual(['食費', '外食', SUBSCRIPTION_LABEL, '交通']);
-  });
-  it('金額順', () => {
-    expect(names('amount')).toEqual(['交通', '食費', '外食', SUBSCRIPTION_LABEL]);
+  it('自分で決めた順。設定にない分類はその後ろ(金額順)、サブスクは最後', () => {
+    const names = sortGroups([...groups, g('AI・ツール', 1, 500), g('家賃', 1, 80000)], ['外食', '食費', '交通']).map((x) => x.category);
+    expect(names).toEqual(['外食', '食費', '交通', '家賃', 'AI・ツール', SUBSCRIPTION_LABEL]);
   });
 });
 
