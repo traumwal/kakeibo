@@ -8,6 +8,7 @@ import { Modal } from '../components/Modal';
 import { SubIcon } from '../components/SubIcon';
 import { PeriodNav, usePeriod } from '../components/PeriodNav';
 import { statements, type Statement } from '../lib/card';
+import { guessShopCategory, matchPayment, type PayDraft } from '../lib/quickadd';
 
 type View = 'category' | 'date' | 'payment';
 const VIEWS: [View, string][] = [['category', '分類別'], ['date', '日付順'], ['payment', '支払い別']];
@@ -26,10 +27,14 @@ const loadBasis = (): 'use' | 'withdraw' => {
 const allMonthsOf = (year: number) => Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
 const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
 
-export function Expenses({ goSettings }: { goSettings: () => void }) {
+export function Expenses({ goSettings, draft, clearDraft }: { goSettings: () => void; draft?: PayDraft | null; clearDraft?: () => void }) {
   const { data, update } = useStore();
   const [period, actions] = usePeriod();
-  const [editing, setEditing] = useState<Expense | 'new' | null>(null);
+  const [editing, setEditingState] = useState<Expense | 'new' | null>(draft ? 'new' : null);
+  const setEditing = (v: Expense | 'new' | null) => {
+    if (v === null) clearDraft?.();
+    setEditingState(v);
+  };
   const [view, setViewState] = useState<View>(loadView);
   const setView = (v: View) => {
     setViewState(v);
@@ -170,6 +175,12 @@ export function Expenses({ goSettings }: { goSettings: () => void }) {
       {editing && (
         <ExpenseForm
           initial={editing === 'new' ? undefined : editing}
+          draft={editing === 'new' && draft ? {
+            amount: draft.amount,
+            memo: draft.shop,
+            payment: matchPayment(draft.card, data.settings.paymentMethods),
+            category: guessShopCategory(draft.shop, data.expenses, data.settings.categories),
+          } : undefined}
           categories={data.settings.categories}
           payments={data.settings.paymentMethods}
           defaultPayment={lastPayment}
@@ -322,8 +333,10 @@ function YearCardSummary({ card, list }: { card: string; list: Statement[] }) {
 
 type PayMode = 'self' | 'iPaid' | 'friendPaid';
 
-function ExpenseForm({ initial, categories, payments, defaultPayment, friends, onSave, onClose, onDelete }: {
+function ExpenseForm({ initial, draft, categories, payments, defaultPayment, friends, onSave, onClose, onDelete }: {
   initial?: Expense;
+  /** ショートカットから開いたときの入力済みの値 */
+  draft?: Partial<Expense>;
   categories: string[];
   payments: string[];
   defaultPayment?: string;
@@ -332,13 +345,17 @@ function ExpenseForm({ initial, categories, payments, defaultPayment, friends, o
   onClose: () => void;
   onDelete: (id: string) => void;
 }) {
+  const { cloud } = useStore();
+  // ホーム画面のアプリではなく Safari で開いていて、同期もしていない (ホーム画面のアプリに記録が届かない)
+  const standalone = (navigator as { standalone?: boolean }).standalone || matchMedia('(display-mode: standalone)').matches;
+  const unsynced = !standalone && (cloud.status === 'signedOut' || cloud.status === 'disabled');
   const initMode: PayMode = initial?.settlements?.[0]?.type ?? 'self';
   const [date, setDate] = useState(initial?.date ?? today());
-  const [category, setCategory] = useState(initial?.category ?? categories[0] ?? 'その他');
-  const [memo, setMemo] = useState(initial?.memo ?? '');
-  const [payment, setPayment] = useState(initial ? initial.payment ?? '' : defaultPayment && payments.includes(defaultPayment) ? defaultPayment : '');
+  const [category, setCategory] = useState(initial?.category ?? draft?.category ?? categories[0] ?? 'その他');
+  const [memo, setMemo] = useState(initial?.memo ?? draft?.memo ?? '');
+  const [payment, setPayment] = useState(initial ? initial.payment ?? '' : draft?.payment ?? (defaultPayment && payments.includes(defaultPayment) ? defaultPayment : ''));
   const [mode, setMode] = useState<PayMode>(initMode);
-  const [mine, setMine] = useState(initial ? String(initial.amount) : '');
+  const [mine, setMine] = useState(initial ? String(initial.amount) : draft?.amount ? String(draft.amount) : '');
   const [total, setTotal] = useState(initial?.total != null ? String(initial.total) : '');
   const [allFriends, setAllFriends] = useState(friends);
   const [newFriends, setNewFriends] = useState<Friend[]>([]);
@@ -400,8 +417,10 @@ function ExpenseForm({ initial, categories, payments, defaultPayment, friends, o
   return (
     <Modal title={initial ? '記録を編集' : '支出を記録'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
+        {draft && <p className="note">Apple Pay の支払いから入力しました。分類を確かめて保存してください</p>}
+        {draft && unsynced && <p className="note over">Safari で開いています。ホーム画面のアプリとはデータが別なので、設定の「クラウド同期」にログインしておくと、ここで保存した記録がアプリにも届きます</p>}
         <label>金額(円){mode === 'iPaid' && '・自分の分'}
-          <input required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial} onChange={(e) => setMine(e.target.value)} />
+          <input required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft} onChange={(e) => setMine(e.target.value)} />
         </label>
         <div className="grid2">
           <label>日付<input type="date" required value={date} onChange={(e) => setDate(e.target.value)} /></label>

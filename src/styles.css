@@ -275,3 +275,7 @@ legend { font-size: 0.85rem; color: var(--muted); padding: 0 4px; }
 .fx-now > span { color: var(--muted); min-width: 5em; }
 .actions.left { justify-content: flex-start; align-items: center; margin-top: 10px; }
 .fx-form { margin-top: 12px; }
+.steps { margin: 8px 0; padding-left: 1.4em; font-size: 0.85rem; display: grid; gap: 4px; }
+.shortcut-url { margin-top: 8px; gap: 8px; }
+.shortcut-url code { font-size: 0.8rem; background: var(--grid); border-radius: 6px; padding: 6px 8px; }
+.note.over { color: var(--danger); }

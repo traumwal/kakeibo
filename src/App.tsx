@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from './hooks/useStore';
 import { Dashboard } from './pages/Dashboard';
 import { Subscriptions } from './pages/Subscriptions';
@@ -6,6 +6,7 @@ import { Expenses } from './pages/Expenses';
 import { Friends } from './pages/Friends';
 import { Settings } from './pages/Settings';
 import { FxUpdater } from './components/FxUpdater';
+import { parsePayParams, type PayDraft } from './lib/quickadd';
 
 export type Tab = 'home' | 'subs' | 'expenses' | 'friends' | 'settings';
 
@@ -18,7 +19,13 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('home');
+  // iPhone のショートカット (Apple Pay) から ?pay=... で開かれたら、入力済みの記録画面を開く
+  const [draft, setDraft] = useState<PayDraft | null>(() => parsePayParams(location.search));
+  const [tab, setTab] = useState<Tab>(() => (draft ? 'expenses' : 'home'));
+  useEffect(() => {
+    // 再読み込みでもう一度開かないように、URL から消しておく
+    if (draft) history.replaceState(history.state, '', location.pathname);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const { saveError } = useStore();
   return (
     <div className="app">
@@ -27,7 +34,7 @@ export default function App() {
       <main>
         {tab === 'home' && <Dashboard go={setTab} />}
         {tab === 'subs' && <Subscriptions />}
-        {tab === 'expenses' && <Expenses goSettings={() => { setTab('settings'); window.scrollTo(0, 0); }} />}
+        {tab === 'expenses' && <Expenses draft={draft} clearDraft={() => setDraft(null)} goSettings={() => { setTab('settings'); window.scrollTo(0, 0); }} />}
         {tab === 'friends' && <Friends />}
         {tab === 'settings' && <Settings />}
       </main>
