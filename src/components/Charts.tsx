@@ -6,11 +6,15 @@ const trim = (n: number) => n.toFixed(1).replace(/\.0$/, '');
 /** 1万円単位で表示 (千円単位はキリが悪く読みにくいため使わない) */
 export const compactYen = (n: number) => (n === 0 ? '0' : n >= 10000 ? `${trim(n / 10000)}万` : `${Math.round(n).toLocaleString()}`);
 
-/** カテゴリ別の横棒。金額を棒の右に直接表示する (円グラフより金額が読みやすい) */
+/** カテゴリ別の横棒。金額を棒の右に直接表示する (円グラフより金額が読みやすい)。
+ * サブスク・固定費の分 (定期券など) と日々の支出の分を色で分ける */
 export function CategoryBars({ data }: { data: CategoryTotal[] }) {
   if (data.length === 0) return <p className="empty">まだ支出がありません</p>;
   const max = Math.max(...data.map((d) => Math.max(d.amount, d.budget ?? 0)));
+  // 固定費と日々の支出の両方があるときだけ凡例を出す
+  const mixed = data.some((d) => d.fixed > 0) && data.some((d) => d.amount - d.fixed > 0.5);
   return (
+    <>
     <ul className="hbars">
       {data.map((d) => {
         const over = d.budget != null && d.amount > d.budget;
@@ -24,13 +28,23 @@ export function CategoryBars({ data }: { data: CategoryTotal[] }) {
               </span>
             </div>
             <div className="hbar-track">
-              <div className={over ? 'hbar-fill over' : 'hbar-fill'} style={{ width: `${(d.amount / max) * 100}%` }} />
+              <div className="hbar-stack" style={{ width: `${(d.amount / max) * 100}%` }}>
+                {d.fixed > 0 && <div className="hbar-seg fixed" style={{ flexGrow: d.fixed }} />}
+                {d.amount - d.fixed > 0 && <div className="hbar-seg variable" style={{ flexGrow: d.amount - d.fixed }} />}
+              </div>
               {d.budget != null && <div className="hbar-budget" style={{ left: `${(d.budget / max) * 100}%` }} />}
             </div>
           </li>
         );
       })}
     </ul>
+    {mixed && (
+      <div className="split legend">
+        <div><span className="dot c1" />{SUBSCRIPTION_LABEL}</div>
+        <div><span className="dot c2" />{VARIABLE_LABEL}</div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -53,8 +67,7 @@ export function TrendChart({ data, target }: { data: MonthSummary[]; target: num
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           {target > 0 && (
-            <ReferenceLine y={target} stroke="var(--text)" strokeOpacity={0.5} strokeDasharray="4 3"
-              label={{ value: '目安', position: 'insideTopRight', fill: 'var(--muted)', fontSize: 11 }} />
+            <ReferenceLine y={target} stroke="var(--text)" strokeOpacity={0.5} strokeDasharray="4 3" />
           )}
           <Bar dataKey="subscriptions" name={SUBSCRIPTION_LABEL} stackId="a" fill="var(--c1)" />
           <Bar dataKey="expenses" name={VARIABLE_LABEL} stackId="a" fill="var(--c2)" radius={[4, 4, 0, 0]}>

@@ -136,6 +136,7 @@ export function Settings() {
           <summary>集計のくわしいルール</summary>
           <ul>
             <li>支出は「サブスク・固定費」と「日々の支出」(記録タブで記録したもの)に分けて集計します</li>
+            <li>サブスクにも分類(何に使っているか)を付けられます。カテゴリ別では、定期券なら「交通」のように、その分類の中に固定費として入ります(色で分けて表示)。分類の予算にも含まれます。分類を選んでいないサブスクは名前から分類を推測し(「〇〇定期」なら交通)、推測できないものは「サブスク・固定費」にまとめます</li>
             <li>年払いのサブスクは、上の設定に応じて毎月 1/12 ずつ、または開始日の月にまとめて計上します。毎月に分けると月ごとの比較がしやすく、まとめると実際にお金が出ていく月がわかります</li>
             <li>サブスクは開始日の月から計上します。スイッチをオフにした月までは計上し、翌月からは計上しません。あとでオンに戻しても、オフだった月は計上されません</li>
             <li>サブスクを削除すると、過去の月の集計からも消えます</li>
@@ -189,7 +190,7 @@ function CategoryRow({ name, data, first, last, onlyOne, update }: {
   const remove = () => {
     const n = usageCount(data, name);
     const target = name === FALLBACK_CATEGORY ? data.settings.categories.find((c) => c !== name) : FALLBACK_CATEGORY;
-    const msg = n > 0 ? `「${name}」を削除します。この分類の記録${n}件は「${target}」に移ります。` : `「${name}」を削除しますか?`;
+    const msg = n > 0 ? `「${name}」を削除します。この分類の記録・サブスク${n}件は「${target}」に移ります。` : `「${name}」を削除しますか?`;
     if (confirm(msg)) update((d) => removeCategory(d, name));
   };
 

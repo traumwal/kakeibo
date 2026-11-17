@@ -1,3 +1,4 @@
+import { effectiveSubCategory, isAutoSubCategory, subCategoryLabel } from '../lib/categories';
 import { useState } from 'react';
 import { billingDateInMonth, currentYen, isOn, monthlyAmount, nextBillingDate, usesInLast, yearlyAmount, type ReviewCandidate, type ReviewReason } from '../lib/calc';
 import { isUsd, recentMonths, yenCharge } from '../lib/fx';
@@ -97,7 +98,7 @@ export function SubscriptionDetail({ sub, review, onBack, onEdit, onToggle, onDe
           <dt>次回請求</dt>
           <dd>{on && next ? `${md(next)}(${next === t ? '今日' : `あと${daysBetween(t, next)}日`})` : '—'}</dd>
           <dt>支払い方法</dt><dd>{sub.payment ?? '未設定'}</dd>
-          <dt>分類</dt><dd>{sub.category}</dd>
+          <dt>分類</dt><dd>{subCategoryLabel(effectiveSubCategory(sub))}{isAutoSubCategory(sub) && <small className="muted">(名前から自動)</small>}</dd>
           <dt>開始日</dt><dd>{ymd(sub.startDate)}</dd>
           {sub.memo && (<><dt>メモ</dt><dd>{sub.memo}</dd></>)}
         </dl>

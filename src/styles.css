@@ -90,6 +90,13 @@ h3 { font-size: 1rem; margin: 0; }
 .hbar-track { position: relative; height: 10px; background: var(--grid); border-radius: 5px; }
 .hbar-fill { height: 100%; background: var(--c1); border-radius: 5px; min-width: 2px; }
 .hbar-fill.over { background: var(--danger); }
+.hbar-stack { display: flex; height: 100%; min-width: 2px; border-radius: 5px; overflow: hidden; }
+.hbar-seg { height: 100%; flex-basis: 0; }
+.hbar-seg.fixed { background: var(--c1); }
+.hbar-seg.variable { background: var(--c2); }
+.legend { margin-top: 12px; font-size: 0.8rem; color: var(--muted); }
+.sub-group-head { display: flex; justify-content: space-between; align-items: baseline; margin: 16px 4px 6px; font-size: 0.9rem; color: var(--muted); }
+.sub-group-head b { color: var(--text); font-weight: 600; }
 .hbar-budget { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: 0.5; }
 .chart { margin: 0 -4px; }
 
