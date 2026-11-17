@@ -150,6 +150,8 @@ export function Settings() {
         </details>
       </section>
 
+      <ShortcutSection />
+
       <FxSection />
 
       <CloudSync />
@@ -331,6 +333,45 @@ function PaymentRow({ name, rule, onRule, onRemove }: {
 }
 
 /** ドル円の換算。レートは自動で取ってくるので、ふだんは手数料だけ合わせればよい */
+/** iPhone のショートカットで、Apple Pay で払ったときに記録画面を開く設定の手順 */
+function ShortcutSection() {
+  const base = new URL(import.meta.env.BASE_URL, location.origin).href;
+  const url = `${base}?pay=`;
+  const sample = url + encodeURIComponent('¥1,200\nスターバックス\nJCB');
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      prompt('このアドレスをコピーしてください', url);
+    }
+  };
+  return (
+    <section className="card">
+      <h2>iPhone で支払いと同時に記録</h2>
+      <p className="note">Apple Pay(ウォレットのカード)で払うと、金額・お店・カードが入った記録画面が開くようにできます。iPhone の「ショートカット」アプリで一度だけ設定します</p>
+      <ol className="steps">
+        <li>ショートカットアプリの「オートメーション」で「+」→「ウォレット」を選ぶ</li>
+        <li>使うカード(JCB・エポスなど)を選び、「すぐに実行」にして次へ →「新規の空のオートメーション」</li>
+        <li>アクション「テキスト」を追加し、3行で「金額」「加盟店」「カード」を入れる(それぞれ「ショートカットの入力」の項目を変数として選ぶ)</li>
+        <li>アクション「URLエンコード」を追加する(入力は上のテキスト)</li>
+        <li>アクション「URLを開く」を追加し、下のアドレスを貼って、そのすぐ後ろに「URLエンコードされたテキスト」を変数として入れる</li>
+      </ol>
+      <div className="row shortcut-url">
+        <code className="grow ellipsis">{url}</code>
+        <button type="button" className="btn small" onClick={copy}>{copied ? 'コピーしました' : 'コピー'}</button>
+      </div>
+      <p className="note">
+        <a href={sample}>試しに開く</a>(1,200円・スターバックス・JCB で記録画面が開きます)。
+        カードは名前に「JCB」「エポス」などが入っていれば、上の支払い方法に自動で合わせます。分類は、同じお店で前に選んだものを使います
+      </p>
+      <p className="note">ホーム画面に追加したアプリと Safari では、データが別々に保存されます。ショートカットは Safari で開くので、両方で「クラウド同期」にログインしておくと、記録がアプリにも届きます</p>
+    </section>
+  );
+}
+
 function FxSection() {
   const { data, update } = useStore();
   const fx = data.settings.fx;
