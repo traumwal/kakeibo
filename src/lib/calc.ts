@@ -328,21 +328,13 @@ export function paymentBreakdown(data: CalcData, yms: string | string[]): Catego
   return [...groups.filter((g) => g.category !== NO_PAYMENT_LABEL), ...groups.filter((g) => g.category === NO_PAYMENT_LABEL)];
 }
 
-/** custom: 設定の分類の順 (サブスク・設定にない分類は後ろ) / count: 記録の回数が多い順 / amount: 金額の大きい順 */
-export type GroupSort = 'custom' | 'count' | 'amount';
-
-export function sortGroups(groups: CategoryGroup[], mode: GroupSort, order: string[]): CategoryGroup[] {
+/** 設定の分類の順に並べる (設定にない分類はその後ろ、サブスク・固定費は最後。同じ順位のときは金額の大きい順) */
+export function sortGroups(groups: CategoryGroup[], order: string[]): CategoryGroup[] {
   const rank = (g: CategoryGroup) => {
     const i = order.indexOf(g.category);
     return i >= 0 ? i : g.category === SUBSCRIPTION_LABEL ? order.length + 1 : order.length;
   };
-  const cmp: Record<GroupSort, (a: CategoryGroup, b: CategoryGroup) => number> = {
-    custom: (a, b) => rank(a) - rank(b),
-    count: (a, b) => b.items.length - a.items.length,
-    amount: () => 0,
-  };
-  // 同じ順位のときは金額の大きい順
-  return [...groups].sort((a, b) => cmp[mode](a, b) || b.amount - a.amount);
+  return [...groups].sort((a, b) => rank(a) - rank(b) || b.amount - a.amount);
 }
 
 /** グラフの目盛り: 目安の半分きざみ (2万なら 0, 1万, 2万, …)。目盛りが多すぎるときは間隔を倍にする */

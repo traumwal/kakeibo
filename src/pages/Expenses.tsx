@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { categoryBreakdown, expensesInMonths, paymentBreakdown, sortGroups, NO_PAYMENT_LABEL, type CategoryGroup, type GroupSort, type LedgerItem } from '../lib/calc';
+import { categoryBreakdown, expensesInMonths, paymentBreakdown, sortGroups, NO_PAYMENT_LABEL, type CategoryGroup, type LedgerItem } from '../lib/calc';
 import { today, ymOf } from '../lib/date';
 import { formatYen, uid } from '../lib/format';
 import type { Expense, Friend, Settlement } from '../types';
@@ -17,14 +17,6 @@ const loadView = (): View => {
     const v = localStorage.getItem(VIEW_KEY);
     return v === 'date' || v === 'payment' ? v : 'category';
   } catch { return 'category'; }
-};
-const SORT_KEY = 'kakeibo.expenses.sort';
-const SORTS: [GroupSort, string][] = [['custom', '自分の順'], ['count', '回数順'], ['amount', '金額順']];
-const loadSort = (): GroupSort => {
-  try {
-    const v = localStorage.getItem(SORT_KEY);
-    return v === 'count' || v === 'amount' ? v : 'custom';
-  } catch { return 'custom'; }
 };
 const BASIS_KEY = 'kakeibo.expenses.payBasis';
 const loadBasis = (): 'use' | 'withdraw' => {
@@ -43,14 +35,9 @@ export function Expenses({ goSettings }: { goSettings: () => void }) {
     setViewState(v);
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* 保存できなくても表示は切り替える */ }
   };
-  const [sort, setSortState] = useState<GroupSort>(loadSort);
-  const setSort = (v: GroupSort) => {
-    setSortState(v);
-    try { localStorage.setItem(SORT_KEY, v); } catch { /* 保存できなくても並びは変える */ }
-  };
   const months = period.months;
   const isYear = period.kind === 'year';
-  const groups = sortGroups(categoryBreakdown(data, months), sort, data.settings.categories);
+  const groups = sortGroups(categoryBreakdown(data, months), data.settings.categories);
   const payGroups = paymentBreakdown(data, months);
   const periodTotal = groups.reduce((s, g) => s + g.amount, 0);
   const list = expensesInMonths(data.expenses, months).sort((a, b) => b.date.localeCompare(a.date));
@@ -93,13 +80,8 @@ export function Expenses({ goSettings }: { goSettings: () => void }) {
           </div>
           {groups.length > 1 && (
             <div className="sort-row">
-              <span className="muted">並び</span>
-              <div className="seg three small">
-                {SORTS.map(([v, l]) => (
-                  <button key={v} className={sort === v ? 'on' : ''} aria-pressed={sort === v} onClick={() => setSort(v)}>{l}</button>
-                ))}
-              </div>
-              {sort === 'custom' && <button className="link small-link" onClick={goSettings}>順番を変える</button>}
+              <span className="muted">設定の分類の順に並んでいます</span>
+              <button className="link small-link" onClick={goSettings}>順番を変える</button>
             </div>
           )}
           {groups.length === 0 && <p className="empty">この期間の記録はまだありません</p>}
