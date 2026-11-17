@@ -6,6 +6,10 @@ import { CategoryBars, TrendChart } from '../components/Charts';
 import { PeriodNav, usePeriod } from '../components/PeriodNav';
 import type { Tab } from '../App';
 import { upcomingWithdrawals } from '../lib/card';
+import { isUsd, yenCharge } from '../lib/fx';
+import { billingDatesUntil } from '../lib/calc';
+
+const isOnNow = (s: { endDate?: string }) => !s.endDate || s.endDate > today();
 
 export function Dashboard({ go }: { go: (t: Tab) => void }) {
   const { data } = useStore();
@@ -28,6 +32,11 @@ export function Dashboard({ go }: { go: (t: Tab) => void }) {
   const lent = balances.filter((b) => b.balance > 0).reduce((s, b) => s + b.balance, 0);
   const reviews = reviewCandidates(data.subscriptions, data.settings, today());
   const upcoming = upcomingWithdrawals(data, today());
+  // ドルのサブスクで、この2週間に請求があり、まだ明細の額を入れていないもの
+  const toConfirm = data.subscriptions.filter((s) => isUsd(s) && isOnNow(s)).flatMap((s) =>
+    billingDatesUntil(s, today())
+      .filter((d) => daysBetween(d, today()) <= 14 && s.actuals?.[d.slice(0, 7)] == null)
+      .map((d) => ({ sub: s, date: d, yen: yenCharge(s, d, data.settings.fx).yen })));
 
   return (
     <div className="page">
@@ -77,6 +86,24 @@ export function Dashboard({ go }: { go: (t: Tab) => void }) {
               <span className="num">{reviews.length}件</span>
             </button>
           )}
+        </section>
+      )}
+
+      {toConfirm.length > 0 && (
+        <section className="card">
+          <h2>ドルの請求額を確認</h2>
+          <ul className="list">
+            {toConfirm.map(({ sub, date, yen }) => (
+              <li key={sub.id + date} className="row clickable" onClick={() => go('subs')}>
+                <span className="grow">
+                  <b>{sub.name}</b>
+                  <span className="sub-sub">{Number(date.slice(5, 7))}/{Number(date.slice(8))} 請求 · ${sub.amount}</span>
+                </span>
+                <span className="num">約{formatYen(yen)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="note">カードの明細が来たら、サブスクの詳細画面で実際の額に直せます(直さなければ自動の換算のまま)</p>
         </section>
       )}
 

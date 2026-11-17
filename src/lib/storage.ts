@@ -22,6 +22,7 @@ export function emptyData(): AppData {
       yearlyMode: 'spread',
       paymentMethods: ['現金'],
       cardRules: {},
+      fx: { rates: {}, manualRate: 150, feePercent: 1.6 },
     },
   };
 }
@@ -39,7 +40,7 @@ export function normalize(raw: unknown): AppData {
     expenses: arr(r.expenses),
     friends: arr(r.friends),
     repayments: arr(r.repayments),
-    settings: { ...base.settings, ...(r.settings ?? {}) },
+    settings: { ...base.settings, ...(r.settings ?? {}), fx: { ...base.settings.fx, ...(r.settings?.fx ?? {}) } },
   };
 }
 

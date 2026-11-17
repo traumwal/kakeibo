@@ -5,6 +5,7 @@ import { Subscriptions } from './pages/Subscriptions';
 import { Expenses } from './pages/Expenses';
 import { Friends } from './pages/Friends';
 import { Settings } from './pages/Settings';
+import { FxUpdater } from './components/FxUpdater';
 
 export type Tab = 'home' | 'subs' | 'expenses' | 'friends' | 'settings';
 
@@ -21,6 +22,7 @@ export default function App() {
   const { saveError } = useStore();
   return (
     <div className="app">
+      <FxUpdater />
       {saveError && <div className="banner">データを保存できませんでした(プライベートブラウズや容量不足の可能性があります)</div>}
       <main>
         {tab === 'home' && <Dashboard go={setTab} />}

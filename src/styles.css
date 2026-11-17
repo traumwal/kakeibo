@@ -254,3 +254,16 @@ legend { font-size: 0.85rem; color: var(--muted); padding: 0 4px; }
 .pay-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
 .pay-fields label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
 .target-input span { white-space: nowrap; }
+
+.amount-input { display: flex; gap: 6px; }
+.amount-input select { width: auto; flex: none; }
+.yen-approx { display: block; font-size: 0.75rem; font-weight: 400; color: var(--muted); text-align: right; }
+.sub-price .yen-approx { text-align: center; font-size: 0.85rem; }
+.charges > li { gap: 10px; }
+.actual-input { display: flex; align-items: center; gap: 4px; flex: none; }
+.actual-input input { width: 104px; text-align: right; }
+.actual-input.set input { border-color: var(--accent); font-weight: 700; }
+.fx-now { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; font-size: 0.9rem; }
+.fx-now > span { color: var(--muted); min-width: 5em; }
+.actions.left { justify-content: flex-start; align-items: center; margin-top: 10px; }
+.fx-form { margin-top: 12px; }

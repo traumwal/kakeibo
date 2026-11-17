@@ -19,6 +19,7 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
     name: initial?.name ?? '',
     domain: initial?.domain ?? '',
     amount: initial ? String(initial.amount) : '',
+    currency: initial?.currency ?? 'JPY',
     cycle: initial?.cycle ?? 'monthly',
     billingDay: String(initial?.billingDay ?? Number(t.slice(8))),
     category: initial?.category ?? 'サブスク',
@@ -42,6 +43,7 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
       name: f.name.trim(),
       domain: cleanDomain(f.domain) || undefined,
       amount: Number(f.amount),
+      currency: f.currency === 'USD' ? 'USD' : undefined,
       cycle: f.cycle as Subscription['cycle'],
       billingDay: Math.min(31, Math.max(1, Number(f.billingDay) || 1)),
       category: f.category,
@@ -63,7 +65,16 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
           </label>
         </div>
         <div className="grid2">
-          <label>金額(円)<input required type="number" inputMode="numeric" min="0" value={f.amount} onChange={set('amount')} /></label>
+          <label>金額
+            <span className="amount-input">
+              <select value={f.currency} onChange={set('currency')} aria-label="通貨">
+                <option value="JPY">円</option>
+                <option value="USD">ドル</option>
+              </select>
+              <input required type="number" inputMode="decimal" min="0" step={f.currency === 'USD' ? '0.01' : '1'} value={f.amount}
+                onChange={set('amount')} placeholder={f.currency === 'USD' ? '例: 20' : '例: 980'} />
+            </span>
+          </label>
           <label>支払い周期
             <select value={f.cycle} onChange={set('cycle')}>
               <option value="monthly">毎月</option>
@@ -89,6 +100,9 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
           </label>
         </div>
         {f.cycle === 'yearly' && <p className="note">年払いは開始日の月に請求される扱いです</p>}
+        {f.currency === 'USD' && (
+          <p className="note">円の額は請求日のレート(カードの海外手数料込み)で自動で換算します。カードの明細が来たら、詳細画面で実際の額に直せます</p>
+        )}
         <label>メモ<input value={f.memo} onChange={set('memo')} /></label>
         <div className="actions">
           {initial && <button type="button" className="btn danger" onClick={() => onDelete(initial.id)}>削除</button>}
