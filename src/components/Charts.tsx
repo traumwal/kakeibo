@@ -67,8 +67,7 @@ export function TrendChart({ data, target }: { data: MonthSummary[]; target: num
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           {target > 0 && (
-            <ReferenceLine y={target} stroke="var(--text)" strokeOpacity={0.5} strokeDasharray="4 3"
-              label={{ value: '目安', position: 'insideTopRight', fill: 'var(--muted)', fontSize: 11 }} />
+            <ReferenceLine y={target} stroke="var(--text)" strokeOpacity={0.5} strokeDasharray="4 3" />
           )}
           <Bar dataKey="subscriptions" name={SUBSCRIPTION_LABEL} stackId="a" fill="var(--c1)" />
           <Bar dataKey="expenses" name={VARIABLE_LABEL} stackId="a" fill="var(--c2)" radius={[4, 4, 0, 0]}>
