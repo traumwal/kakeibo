@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import { normalize, SUGGESTED_CATEGORIES } from '../lib/storage';
-import { addCategory, moveCategory, removeCategory, renameCategory, usageCount, FALLBACK_CATEGORY } from '../lib/categories';
+import { addCategory, moveCategory, moveTo, removeCategory, renameCategory, setCategoryOrder, usageCount, FALLBACK_CATEGORY } from '../lib/categories';
 import type { AppData, CardRule } from '../types';
 import { dayLabel, ruleLabel } from '../lib/card';
 import { today } from '../lib/date';
@@ -17,6 +17,7 @@ export function Settings() {
   const fileRef = useRef<HTMLInputElement>(null);
   const suggestions = SUGGESTED_CATEGORIES.filter((c) => !settings.categories.includes(c));
   const setS = (patch: Partial<typeof settings>) => update((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+  const drag = useDragOrder(settings.categories, (order) => update((d) => setCategoryOrder(d, order)));
 
   const exportJson = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -41,10 +42,10 @@ export function Settings() {
       <h1>設定</h1>
       <section className="card">
         <h2>分類と月の予算</h2>
-        <p className="note">名前をタップすると変更できます(記録の分類も一緒に変わります)。上にあるものほど、記録するときに選びやすくなります。予算を入れると、超えたときに赤く表示されます</p>
-        <ul className="list cat-settings">
-          {settings.categories.map((c, i) => (
-            <CategoryRow key={c} name={c} data={data} first={i === 0} last={i === settings.categories.length - 1}
+        <p className="note">左の ≡ を押したまま上下に動かすと並べ替えられます。この順番が記録タブの並び順になり、上にあるものほど記録するときに選びやすくなります。名前をタップすると変更できます(記録の分類も一緒に変わります)。予算を入れると、超えたときに赤く表示されます</p>
+        <ul className="list cat-settings" ref={drag.listRef}>
+          {drag.order.map((c) => (
+            <CategoryRow key={c} name={c} data={data} dragging={drag.dragging === c} onHandleDown={(e) => drag.start(c, e)}
               onlyOne={settings.categories.length === 1} update={update} />
           ))}
         </ul>
@@ -167,11 +168,58 @@ export function Settings() {
   );
 }
 
-function CategoryRow({ name, data, first, last, onlyOne, update }: {
+/** つまみを押したまま上下に動かして並べ替える。動かしている間は見た目だけ入れ替え、離したときに保存する */
+function useDragOrder(items: string[], onDrop: (order: string[]) => void) {
+  const listRef = useRef<HTMLUListElement>(null);
+  const [state, setState] = useState<{ name: string; order: string[] } | null>(null);
+  const ref = useRef(state);
+  ref.current = state;
+  const dropRef = useRef(onDrop);
+  dropRef.current = onDrop;
+
+  useEffect(() => {
+    if (!state) return;
+    const move = (e: PointerEvent) => {
+      const s = ref.current;
+      const rows = listRef.current ? [...listRef.current.children] as HTMLElement[] : [];
+      if (!s || rows.length !== s.order.length) return;
+      e.preventDefault();
+      // 動かしている行以外で、真ん中が指より上にある行の数 = 入れる位置
+      const at = rows.filter((r, i) => s.order[i] !== s.name && r.getBoundingClientRect().top + r.offsetHeight / 2 < e.clientY).length;
+      const order = moveTo(s.order, s.name, at);
+      if (order.join('\n') !== s.order.join('\n')) setState({ ...s, order });
+    };
+    const end = () => {
+      const s = ref.current;
+      setState(null);
+      if (s && s.order.join('\n') !== items.join('\n')) dropRef.current(s.order);
+    };
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+  }, [state != null, items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return {
+    listRef,
+    order: state?.order ?? items,
+    dragging: state?.name ?? null,
+    start: (name: string, e: React.PointerEvent) => {
+      e.preventDefault();
+      setState({ name, order: items });
+    },
+  };
+}
+
+function CategoryRow({ name, data, dragging, onHandleDown, onlyOne, update }: {
   name: string;
   data: AppData;
-  first: boolean;
-  last: boolean;
+  dragging: boolean;
+  onHandleDown: (e: React.PointerEvent) => void;
   onlyOne: boolean;
   update: (fn: (d: AppData) => AppData) => void;
 }) {
@@ -195,11 +243,14 @@ function CategoryRow({ name, data, first, last, onlyOne, update }: {
   };
 
   return (
-    <li className="row">
-      <span className="reorder">
-        <button className="icon-btn" disabled={first} aria-label={`${name}を上へ`} onClick={() => update((d) => moveCategory(d, name, -1))}>↑</button>
-        <button className="icon-btn" disabled={last} aria-label={`${name}を下へ`} onClick={() => update((d) => moveCategory(d, name, 1))}>↓</button>
-      </span>
+    <li className={dragging ? 'row dragging' : 'row'}>
+      <button type="button" className="drag-handle" aria-label={`${name}を並べ替え(上下の矢印キーでも動かせます)`} onPointerDown={onHandleDown}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            update((d) => moveCategory(d, name, e.key === 'ArrowUp' ? -1 : 1));
+          }
+        }}>≡</button>
       {editing ? (
         <input className="grow" autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
           onKeyDown={(e) => {

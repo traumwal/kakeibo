@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addCategory, guessCategory, moveCategory, removeCategory, renameCategory, subCategoryOptions } from './categories';
+import { addCategory, guessCategory, moveCategory, moveTo, removeCategory, renameCategory, setCategoryOrder, subCategoryOptions } from './categories';
 import { emptyData } from './storage';
 import type { AppData, Expense } from '../types';
 
@@ -74,5 +74,17 @@ describe('サブスクの分類', () => {
     expect(o).toContain('AI・ツール');
     expect(o.filter((c) => c === '交通')).toHaveLength(1);
     expect(o.at(-1)).toBe('サブスク');
+  });
+});
+
+describe('ドラッグでの並べ替え', () => {
+  it('moveTo は指定の位置に入れ直す', () => {
+    expect(moveTo(['a', 'b', 'c', 'd'], 'a', 2)).toEqual(['b', 'c', 'a', 'd']);
+    expect(moveTo(['a', 'b', 'c'], 'c', 0)).toEqual(['c', 'a', 'b']);
+    expect(moveTo(['a', 'b', 'c'], 'b', 99)).toEqual(['a', 'c', 'b']);
+  });
+  it('並びを置き換える。分類が増減する並びは無視する', () => {
+    expect(setCategoryOrder(make(['a', 'b', 'c']), ['c', 'a', 'b']).settings.categories).toEqual(['c', 'a', 'b']);
+    expect(setCategoryOrder(make(['a', 'b']), ['a', 'x']).settings.categories).toEqual(['a', 'b']);
   });
 });
