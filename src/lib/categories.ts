@@ -52,6 +52,20 @@ export function moveCategory(data: AppData, name: string, delta: -1 | 1): AppDat
   return { ...data, settings: { ...data.settings, categories: list } };
 }
 
+/** 並び順をまるごと置き換える (ドラッグでの並べ替え)。分類の増減がある並びは受け付けない */
+export function setCategoryOrder(data: AppData, order: string[]): AppData {
+  const cur = data.settings.categories;
+  if (order.length !== cur.length || !cur.every((c) => order.includes(c))) return data;
+  return { ...data, settings: { ...data.settings, categories: [...order] } };
+}
+
+/** name を除いた並びの at 番目に入れ直す */
+export function moveTo(list: string[], name: string, at: number): string[] {
+  const rest = list.filter((c) => c !== name);
+  rest.splice(Math.max(0, Math.min(at, rest.length)), 0, name);
+  return rest;
+}
+
 export function addCategory(data: AppData, name: string): AppData {
   name = name.trim();
   if (!name || data.settings.categories.includes(name)) return data;
