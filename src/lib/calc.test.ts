@@ -257,3 +257,15 @@ describe('サブスクの分類と集計', () => {
     expect(r.map((x) => x.sub.name).sort()).toEqual(['Netflix', '昔の']);
   });
 });
+
+describe('分類を選んでいないサブスク', () => {
+  it('名前から推測して分類に入れる。推測できなければサブスク・固定費', () => {
+    const data = {
+      ...emptyData(),
+      subscriptions: [sub({ name: 'JR 定期券', amount: 10000 }), sub({ name: 'なにか', amount: 300 })],
+      expenses: [exp({ amount: 500, category: '交通' })],
+    };
+    const g = categoryBreakdown(data, '2026-11');
+    expect(g.map((x) => [x.category, x.amount, x.fixed])).toEqual([['交通', 10500, 10000], [SUBSCRIPTION_LABEL, 300, 300]]);
+  });
+});

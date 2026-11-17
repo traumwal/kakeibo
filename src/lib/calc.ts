@@ -1,6 +1,6 @@
 import type { AppData, Expense, Friend, FxSettings, Period, Repayment, Settings, Subscription, YearlyMode } from '../types';
 import { yenCharge } from './fx';
-import { ESSENTIAL_SUB_CATEGORIES, UNCLASSIFIED_SUB } from './categories';
+import { effectiveSubCategory, ESSENTIAL_SUB_CATEGORIES, UNCLASSIFIED_SUB } from './categories';
 import { addMonths, clampDay, daysBetween, monthEnd, monthStart, ymOf } from './date';
 
 export const SUBSCRIPTION_LABEL = 'サブスク・固定費';
@@ -175,8 +175,11 @@ export interface CategoryTotal {
   budget?: number;
 }
 
-/** 集計でサブスクを入れる分類。分類を選んでいないものは「サブスク・固定費」にまとめる */
-export const subGroupOf = (sub: Subscription) => (!sub.category || sub.category === UNCLASSIFIED_SUB ? SUBSCRIPTION_LABEL : sub.category);
+/** 集計でサブスクを入れる分類。分類を選んでいないものは名前から推測し (定期券 → 交通)、わからなければ「サブスク・固定費」にまとめる */
+export function subGroupOf(sub: Subscription): string {
+  const c = effectiveSubCategory(sub);
+  return c === UNCLASSIFIED_SUB ? SUBSCRIPTION_LABEL : c;
+}
 
 /** 分類別合計 (サブスクは選んだ分類に入れる。定期券なら「交通」)。金額の大きい順。複数月なら予算も月数倍 */
 export function categoryTotals(data: CalcData, yms: string | string[]): CategoryTotal[] {
@@ -236,7 +239,7 @@ export function reviewCandidates(subs: Subscription[], settings: Settings, today
     if (sub.lastUsedAt) {
       const days = daysBetween(sub.lastUsedAt, todayStr);
       if (days >= settings.reviewUnusedDays) reasons.push({ kind: 'unused', days });
-    } else if (!sub.usage && !ESSENTIAL_SUB_CATEGORIES.includes(sub.category) && daysBetween(sub.startDate, todayStr) >= settings.reviewUnusedDays) {
+    } else if (!sub.usage && !ESSENTIAL_SUB_CATEGORIES.includes(effectiveSubCategory(sub)) && daysBetween(sub.startDate, todayStr) >= settings.reviewUnusedDays) {
       // 「よく使う」「たまに」と答えていれば、記録がないだけでは候補にしない。定期券・家賃なども記録がないだけでは候補にしない
       reasons.push({ kind: 'neverUsed' });
     }

@@ -9,7 +9,7 @@ import { SubIcon } from '../components/SubIcon';
 import { SubscriptionForm } from '../components/SubscriptionForm';
 import { Switch } from '../components/Switch';
 import { SubscriptionDetail } from './SubscriptionDetail';
-import { subCategoryLabel, UNCLASSIFIED_SUB } from '../lib/categories';
+import { effectiveSubCategory, subCategoryLabel, UNCLASSIFIED_SUB } from '../lib/categories';
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
 const SWIPE_W = 84; // 左にスワイプしたときに出る削除ボタンの幅
@@ -29,7 +29,7 @@ export function Subscriptions() {
   const flagged = new Set(reviews.map((c) => c.sub.id));
   const selected = data.subscriptions.find((s) => s.id === selectedId);
   // オンのものを分類ごとにまとめる (月額の大きい分類から。未分類は最後)
-  const groups = [...active.reduce((m, s) => m.set(s.category || UNCLASSIFIED_SUB, [...(m.get(s.category || UNCLASSIFIED_SUB) ?? []), s]), new Map<string, Subscription[]>())]
+  const groups = [...active.reduce((m, s) => m.set(effectiveSubCategory(s), [...(m.get(effectiveSubCategory(s)) ?? []), s]), new Map<string, Subscription[]>())]
     .map(([category, subs]) => ({ category, subs, monthly: subs.reduce((a, x) => a + monthlyAmount(x, fx), 0) }))
     .sort((a, b) => Number(a.category === UNCLASSIFIED_SUB) - Number(b.category === UNCLASSIFIED_SUB) || b.monthly - a.monthly);
   const grouped = groups.length > 1 || (groups.length === 1 && groups[0].category !== UNCLASSIFIED_SUB);

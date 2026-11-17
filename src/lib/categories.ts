@@ -105,3 +105,13 @@ export function guessCategory(name: string): string | undefined {
   }
   return undefined;
 }
+
+/** 集計に使う分類。分類を選んでいないサブスクは名前から推測する (「JR 定期券」なら交通)。推測できなければ未分類 */
+export function effectiveSubCategory(sub: { name: string; category?: string }): string {
+  if (sub.category && sub.category !== UNCLASSIFIED_SUB) return sub.category;
+  return guessCategory(sub.name) ?? UNCLASSIFIED_SUB;
+}
+
+/** 分類を自分で選ばず、名前からの推測で振り分けているか */
+export const isAutoSubCategory = (sub: { name: string; category?: string }) =>
+  (!sub.category || sub.category === UNCLASSIFIED_SUB) && effectiveSubCategory(sub) !== UNCLASSIFIED_SUB;
