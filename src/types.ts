@@ -4,7 +4,10 @@ export interface Subscription {
   id: string;
   name: string;
   domain?: string; // ロゴ取得用のサービスのドメイン (例: netflix.com)
-  amount: number; // 1回の請求額
+  amount: number; // 1回の請求額 (currency の通貨。ドルは小数あり)
+  currency?: Currency; // 未設定なら円
+  /** ドルのサブスクの、実際に請求された円の額 (請求月 YYYY-MM -> 円)。カードの明細を見て手で上書きする */
+  actuals?: Record<string, number>;
   cycle: Cycle;
   billingDay: number; // 請求日 (1-31)。年払いは startDate の月に請求
   category: string;
@@ -71,7 +74,8 @@ export interface Settings {
   monthlyTarget: number; // 毎月の支出の目安 (グラフの目盛りの基準)
   yearlyMode: YearlyMode;
   paymentMethods: string[]; // 支払い方法 (現金・クレジットカードなど)
-  cardRules: Record<string, CardRule>; // 支払い方法名 -> 締め日・支払日 (クレジットカードのみ)
+  cardRules: Record<string, CardRule>;
+  fx: FxSettings; // 支払い方法名 -> 締め日・支払日 (クレジットカードのみ)
 }
 
 export interface AppData {
@@ -88,4 +92,18 @@ export interface CardRule {
   closingDay: number;
   payDay: number;
   payMonths: 1 | 2; // 締め日の翌月 / 翌々月に引き落とし
+}
+
+export type Currency = 'JPY' | 'USD';
+
+/** ドル円の換算 */
+export interface FxSettings {
+  /** 請求日 -> その日の公表レート (1ドルあたりの円)。一度入れたら変えない (過去の月の合計を動かさないため) */
+  rates: Record<string, number>;
+  /** 最新の公表レート (今月・先の予定の見込みに使う) */
+  latest?: { date: string; rate: number };
+  /** レートを取得できないときに使うレート */
+  manualRate: number;
+  /** カード会社の海外事務手数料 (%)。公表レートに上乗せして換算する */
+  feePercent: number;
 }

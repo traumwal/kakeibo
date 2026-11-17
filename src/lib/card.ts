@@ -1,6 +1,8 @@
 import type { CardRule, Subscription } from '../types';
 import { billingDateInMonth, type LedgerItem } from './calc';
 import { addMonths, clampDay, ymOf } from './date';
+import { yenCharge } from './fx';
+import type { FxSettings } from '../types';
 import type { AppData } from '../types';
 
 type CardData = Pick<AppData, 'subscriptions' | 'expenses' | 'settings'>;
@@ -19,11 +21,13 @@ export function withdrawalDate(rule: CardRule, chargeDate: string): string {
 }
 
 /** サブスクの実際の請求 (年払いは請求月に全額)。月割りの設定とは関係なく、カードに請求される額 */
-function subCharges(sub: Subscription, yms: string[]): LedgerItem[] {
+function subCharges(sub: Subscription, yms: string[], fx: FxSettings): LedgerItem[] {
   const out: LedgerItem[] = [];
   for (const ym of yms) {
     const date = billingDateInMonth(sub, ym);
-    if (date) out.push({ kind: 'sub', date, amount: sub.amount, sub, count: 1 });
+    if (!date) continue;
+    const c = yenCharge(sub, date, fx);
+    out.push({ kind: 'sub', date, amount: c.yen, sub, count: 1, estimate: c.estimate });
   }
   return out;
 }
@@ -38,7 +42,7 @@ function cardCharges(data: CardData, card: string, yms: string[]): LedgerItem[] 
     const iPaid = e.settlements?.some((s) => s.type === 'iPaid');
     items.push({ kind: 'expense', date: e.date, amount: iPaid ? e.total ?? e.amount : e.amount, expense: e });
   }
-  for (const s of data.subscriptions) if (s.payment === card) items.push(...subCharges(s, yms));
+  for (const s of data.subscriptions) if (s.payment === card) items.push(...subCharges(s, yms, data.settings.fx));
   return items;
 }
 

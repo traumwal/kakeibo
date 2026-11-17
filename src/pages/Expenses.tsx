@@ -268,8 +268,11 @@ function LedgerRow({ item, onEdit, multi, showCategory }: { item: LedgerItem; on
       <li className="row">
         <span className="date">{multi ? `${item.count}回` : item.date ? md(item.date) : '月割'}</span>
         <SubIcon name={s.name} domain={s.domain} size={22} />
-        <span className="grow ellipsis">{s.name}{s.cycle === 'yearly' && <small> 年払い {formatYen(s.amount)}</small>}</span>
-        <span className="num">{formatYen(item.amount)}</span>
+        <span className="grow ellipsis">
+          {s.name}
+          {s.currency === 'USD' ? <small> ${s.amount}</small> : s.cycle === 'yearly' && <small> 年払い {formatYen(s.amount)}</small>}
+        </span>
+        <span className="num">{item.estimate && <small>約</small>}{formatYen(item.amount)}</span>
       </li>
     );
   }

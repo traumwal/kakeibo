@@ -1,4 +1,5 @@
-import type { AppData, Expense, Friend, Period, Repayment, Settings, Subscription, YearlyMode } from '../types';
+import type { AppData, Expense, Friend, FxSettings, Period, Repayment, Settings, Subscription, YearlyMode } from '../types';
+import { yenCharge } from './fx';
 import { addMonths, clampDay, daysBetween, monthEnd, monthStart, ymOf } from './date';
 
 export const SUBSCRIPTION_LABEL = 'サブスク・固定費';
@@ -9,13 +10,24 @@ export const NO_PAYMENT_LABEL = '未設定';
 
 type CalcData = Pick<AppData, 'subscriptions' | 'expenses' | 'settings'>;
 
-/** 月額換算 (年払いは 12 で割る) */
-export function monthlyAmount(sub: Subscription): number {
-  return sub.cycle === 'yearly' ? sub.amount / 12 : sub.amount;
+const NO_FX: FxSettings = { rates: {}, manualRate: 150, feePercent: 0 };
+
+/** 集計の設定 (年払いの計上方法とドル円の換算) */
+export type AmountOpts = { yearlyMode: YearlyMode; fx: FxSettings };
+const DEFAULT_OPTS: AmountOpts = { yearlyMode: 'spread', fx: NO_FX };
+
+/** 1回の請求の円の額。ドルは最新のレートで見込み */
+export const currentYen = (sub: Subscription, fx: FxSettings = NO_FX) => yenCharge(sub, null, fx).yen;
+
+/** 月額換算 (年払いは 12 で割る)。ドルは最新のレートで換算 */
+export function monthlyAmount(sub: Subscription, fx: FxSettings = NO_FX): number {
+  const yen = currentYen(sub, fx);
+  return sub.cycle === 'yearly' ? yen / 12 : yen;
 }
 
-export function yearlyAmount(sub: Subscription): number {
-  return sub.cycle === 'yearly' ? sub.amount : sub.amount * 12;
+export function yearlyAmount(sub: Subscription, fx: FxSettings = NO_FX): number {
+  const yen = currentYen(sub, fx);
+  return sub.cycle === 'yearly' ? yen : yen * 12;
 }
 
 /** 過去の期間も含めた、オンだった期間すべて (最後が今の期間) */
@@ -81,16 +93,29 @@ export function billingDateInMonth(sub: Subscription, ym: string): string | null
   return clampDay(ym, sub.billingDay);
 }
 
-/** その月に計上する額。年払いは設定に応じて 月割り(÷12) か 請求月にまとめて */
-export function amountInMonth(sub: Subscription, ym: string, mode: YearlyMode = 'spread'): number {
-  if (!isActiveInMonth(sub, ym)) return 0;
-  if (sub.cycle === 'monthly') return sub.amount;
-  if (mode === 'spread') return sub.amount / 12;
-  return billingDateInMonth(sub, ym) ? sub.amount : 0;
+/** 年払いで、その月が含まれる1年分の請求日 (その月以前で直近の請求。期間の最初より前なら最初の請求) */
+function yearlyBillingFor(sub: Subscription, ym: string): string | null {
+  const p = periodInMonth(sub, ym);
+  if (!p) return null;
+  const startYm = ymOf(p.start);
+  let y = Number(ym.slice(0, 4));
+  if (`${y}-${startYm.slice(5)}` > ym) y -= 1;
+  const billYm = `${y}-${startYm.slice(5)}`;
+  return clampDay(billYm < startYm ? startYm : billYm, sub.billingDay);
 }
 
-export function subscriptionTotalForMonth(subs: Subscription[], ym: string, mode: YearlyMode = 'spread'): number {
-  return subs.reduce((sum, s) => sum + amountInMonth(s, ym, mode), 0);
+/** その月に計上する円の額。年払いは設定に応じて 月割り(÷12) か 請求月にまとめて。ドルは請求日のレートで換算 */
+export function amountInMonth(sub: Subscription, ym: string, opts: AmountOpts = DEFAULT_OPTS): number {
+  if (!isActiveInMonth(sub, ym)) return 0;
+  if (sub.cycle === 'yearly' && opts.yearlyMode === 'spread') {
+    return yenCharge(sub, yearlyBillingFor(sub, ym), opts.fx).yen / 12;
+  }
+  const date = billingDateInMonth(sub, ym);
+  return date ? yenCharge(sub, date, opts.fx).yen : 0;
+}
+
+export function subscriptionTotalForMonth(subs: Subscription[], ym: string, opts: AmountOpts = DEFAULT_OPTS): number {
+  return subs.reduce((sum, s) => sum + amountInMonth(s, ym, opts), 0);
 }
 
 export function expensesInMonth(expenses: Expense[], ym: string): Expense[] {
@@ -116,7 +141,7 @@ export interface MonthSummary {
 }
 
 export function monthSummary(data: CalcData, ym: string): MonthSummary {
-  const subscriptions = subscriptionTotalForMonth(data.subscriptions, ym, data.settings.yearlyMode);
+  const subscriptions = subscriptionTotalForMonth(data.subscriptions, ym, data.settings);
   const expenses = expensesInMonth(data.expenses, ym).reduce((s, e) => s + e.amount, 0);
   return { ym, subscriptions, expenses, total: subscriptions + expenses };
 }
@@ -209,24 +234,24 @@ export function reviewCandidates(subs: Subscription[], settings: Settings, today
       // 「よく使う」「たまに」と答えていれば、記録がないだけでは候補にしない
       reasons.push({ kind: 'neverUsed' });
     }
-    if (reasons.length) result.push({ sub, reasons, yearlySaving: yearlyAmount(sub) });
+    if (reasons.length) result.push({ sub, reasons, yearlySaving: yearlyAmount(sub, settings.fx) });
   }
   return result.sort((a, b) => b.yearlySaving - a.yearlySaving);
 }
 
 /** オン → 月額の大きい順 */
-export function sortSubscriptions(subs: Subscription[], todayStr: string): Subscription[] {
+export function sortSubscriptions(subs: Subscription[], todayStr: string, fx: FxSettings = NO_FX): Subscription[] {
   return [...subs].sort((a, b) => {
     const aa = isOn(a, todayStr) ? 0 : 1;
     const bb = isOn(b, todayStr) ? 0 : 1;
-    return aa - bb || monthlyAmount(b) - monthlyAmount(a);
+    return aa - bb || monthlyAmount(b, fx) - monthlyAmount(a, fx);
   });
 }
 
 /** 明細1行。サブスクは1ヶ月ならその月の請求日 (請求がなければ null = 月割り分)、複数月なら null で count に回数 */
 export type LedgerItem =
   | { kind: 'expense'; date: string; amount: number; expense: Expense }
-  | { kind: 'sub'; date: string | null; amount: number; sub: Subscription; count: number };
+  | { kind: 'sub'; date: string | null; amount: number; sub: Subscription; count: number; estimate?: boolean };
 
 export interface CategoryGroup extends CategoryTotal {
   items: LedgerItem[];
@@ -240,14 +265,19 @@ function subItems(data: CalcData, yms: string[]): LedgerItem[] {
   for (const s of data.subscriptions) {
     let amount = 0;
     let count = 0;
+    let estimate = false;
     for (const ym of yms) {
-      const a = amountInMonth(s, ym, data.settings.yearlyMode);
+      const a = amountInMonth(s, ym, data.settings);
       amount += a;
       if (a > 0) count++;
+      if (a > 0 && s.currency === 'USD') {
+        const d = s.cycle === 'yearly' && data.settings.yearlyMode === 'spread' ? yearlyBillingFor(s, ym) : billingDateInMonth(s, ym);
+        if (yenCharge(s, d, data.settings.fx).estimate) estimate = true;
+      }
     }
     if (amount <= 0) continue;
     const date = yms.length === 1 ? billingDateInMonth(s, yms[0]) : null;
-    items.push({ kind: 'sub', date, amount, sub: s, count });
+    items.push({ kind: 'sub', date, amount, sub: s, count, estimate });
   }
   return items;
 }
@@ -312,4 +342,15 @@ export function axisTicks(maxValue: number, target: number): number[] {
   while (Math.ceil(top0 / step) > 6) step *= 2;
   const top = Math.ceil(top0 / step) * step;
   return Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+}
+
+/** 今日までの請求日すべて (古い順)。ドルのレートを取りに行く日を決めるのに使う */
+export function billingDatesUntil(sub: Subscription, todayStr: string): string[] {
+  const first = ymOf([...(sub.history ?? []).map((p) => p.start), sub.startDate].sort()[0]);
+  const out: string[] = [];
+  for (let ym = first; ym <= ymOf(todayStr); ym = addMonths(ym, 1)) {
+    const d = billingDateInMonth(sub, ym);
+    if (d && d <= todayStr) out.push(d);
+  }
+  return out;
 }

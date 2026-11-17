@@ -5,6 +5,8 @@ import { addCategory, moveCategory, removeCategory, renameCategory, usageCount, 
 import type { AppData, CardRule } from '../types';
 import { dayLabel, ruleLabel } from '../lib/card';
 import { today } from '../lib/date';
+import { billingDatesUntil } from '../lib/calc';
+import { cardRate, fetchRates, isUsd } from '../lib/fx';
 import { CloudSync } from '../components/CloudSync';
 
 export function Settings() {
@@ -140,10 +142,13 @@ export function Settings() {
             <li>年の集計は、今年なら今月までです(先の月のサブスクを見込みで足しません)。前年比は前年の同じ月までと比べます</li>
             <li>友達と立て替えた支出は、自分の分だけを支出として計上します。友達が立て替えてくれた分も、その日の支出として計上し、同じ額を「借り」として記録します</li>
             <li>クレジットカードの引き落とし額は、締め日までの利用を締め日の翌月(または翌々月)の支払日にまとめます。サブスクは実際の請求日に全額で数えます(年払いの「毎月に分ける」設定とは関係ありません)。友達が立て替えた分は含めず、自分が立て替えた分はお会計の合計で数えます。締め日前のものは「見込み」です</li>
+            <li>ドルのサブスクは、請求日の公表レートに海外手数料を足して円にし、円未満は切り捨てます。まだレートが出ていない請求(今日・先の予定)は今のレートで見込みにし、日がたつと請求日のレートで確定します。サブスクの詳細画面でカードの明細の額を入れると、その額を使います</li>
             <li>カテゴリの予算は月の予算です。年で見るときは12倍(今年は今月までの月数倍)で比べます</li>
           </ul>
         </details>
       </section>
+
+      <FxSection />
 
       <CloudSync />
 
@@ -270,5 +275,54 @@ function PaymentRow({ name, rule, onRule, onRemove }: {
         </div>
       )}
     </li>
+  );
+}
+
+/** ドル円の換算。レートは自動で取ってくるので、ふだんは手数料だけ合わせればよい */
+function FxSection() {
+  const { data, update } = useStore();
+  const fx = data.settings.fx;
+  const [status, setStatus] = useState<string | null>(null);
+  const setFx = (patch: Partial<typeof fx>) => update((d) => ({ ...d, settings: { ...d.settings, fx: { ...d.settings.fx, ...patch } } }));
+  const refresh = async () => {
+    setStatus('取得中…');
+    try {
+      const t = today();
+      const dates = data.subscriptions.filter(isUsd).flatMap((s) => billingDatesUntil(s, t));
+      const next = await fetchRates(fx, dates, t);
+      update((d) => ({ ...d, settings: { ...d.settings, fx: { ...d.settings.fx, latest: next.latest, rates: { ...next.rates, ...d.settings.fx.rates } } } }));
+      setStatus('更新しました');
+    } catch (e) {
+      setStatus((e as Error).message || '取得できませんでした');
+    }
+  };
+  const base = fx.latest?.rate ?? fx.manualRate;
+  return (
+    <section className="card">
+      <h2>ドル円の換算</h2>
+      <p className="note">ドルのサブスクは、請求日の公表レート(欧州中央銀行)にカードの海外手数料を足して円にします。一度換算した過去の請求は、あとでレートが動いても変わりません</p>
+      <div className="fx-now">
+        <span>今のレート</span>
+        <b className="num">1ドル = {base.toFixed(2)}円</b>
+        <small>{fx.latest ? `(${fx.latest.date} 公表)` : '(未取得・下の手入力のレート)'}</small>
+      </div>
+      <div className="fx-now">
+        <span>手数料込み</span>
+        <b className="num">{cardRate(fx, base).toFixed(3)}円</b>
+      </div>
+      <div className="actions left">
+        <button className="btn small" onClick={refresh}>今すぐ更新</button>
+        {status && <small>{status}</small>}
+      </div>
+      <div className="form fx-form">
+        <label>カードの海外事務手数料(%)
+          <input type="number" inputMode="decimal" min="0" step="0.01" value={fx.feePercent} onChange={(e) => setFx({ feePercent: Number(e.target.value) || 0 })} />
+        </label>
+        <label>レートを取得できないときのレート(円)
+          <input type="number" inputMode="decimal" min="1" step="0.01" value={fx.manualRate} onChange={(e) => setFx({ manualRate: Number(e.target.value) || 150 })} />
+        </label>
+      </div>
+      <p className="note">手数料の目安: JCB 1.6%、Visa・Mastercard 1.63〜2.2%(カード会社によって違います)。レートの取得で送るのは「ドル→円」と日付だけで、金額などは送りません</p>
+    </section>
   );
 }

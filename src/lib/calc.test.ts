@@ -131,11 +131,11 @@ describe('オン/オフ', () => {
 describe('年払いの計上方法', () => {
   const y = sub({ amount: 12000, cycle: 'yearly', startDate: '2026-03-01' });
   it('月割り: 毎月 1/12', () => {
-    expect(amountInMonth(y, '2026-05', 'spread')).toBe(1000);
+    expect(amountInMonth(y, '2026-05', { ...emptyData().settings, yearlyMode: 'spread' })).toBe(1000);
   });
   it('請求月にまとめて: 請求月だけ全額', () => {
-    expect(amountInMonth(y, '2027-03', 'billing')).toBe(12000);
-    expect(amountInMonth(y, '2026-05', 'billing')).toBe(0);
+    expect(amountInMonth(y, '2027-03', { ...emptyData().settings, yearlyMode: 'billing' })).toBe(12000);
+    expect(amountInMonth(y, '2026-05', { ...emptyData().settings, yearlyMode: 'billing' })).toBe(0);
   });
 });
 

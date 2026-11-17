@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { isOn, markUsed, monthlyAmount, nextBillingDate, reviewCandidates, sortSubscriptions, turnOff, turnOn } from '../lib/calc';
+import { currentYen, isOn, markUsed, monthlyAmount, nextBillingDate, reviewCandidates, sortSubscriptions, turnOff, turnOn } from '../lib/calc';
+import { SubPrice } from '../components/Money';
 import { today } from '../lib/date';
 import { formatYen } from '../lib/format';
 import type { Subscription, UsageLevel } from '../types';
@@ -18,10 +19,11 @@ export function Subscriptions() {
   const [editing, setEditing] = useState<Subscription | 'new' | null>(null);
   const [swipedId, setSwipedId] = useState<string | null>(null);
   const t = today();
-  const sorted = sortSubscriptions(data.subscriptions, t);
+  const fx = data.settings.fx;
+  const sorted = sortSubscriptions(data.subscriptions, t, fx);
   const active = sorted.filter((s) => isOn(s, t));
   const off = sorted.filter((s) => !isOn(s, t));
-  const monthly = active.reduce((s, x) => s + monthlyAmount(x), 0);
+  const monthly = active.reduce((s, x) => s + monthlyAmount(x, fx), 0);
   const reviews = reviewCandidates(data.subscriptions, data.settings, t);
   const flagged = new Set(reviews.map((c) => c.sub.id));
   const selected = data.subscriptions.find((s) => s.id === selectedId);
@@ -86,6 +88,12 @@ export function Subscriptions() {
           onDelete={() => remove(selected.id)}
           onMarkUsed={() => patch(selected.id, (s) => markUsed(s, t))}
           onUsage={(u: UsageLevel | undefined) => patch(selected.id, (s) => ({ ...s, usage: u }))}
+          fx={fx}
+          onActual={(ym, yen) => patch(selected.id, (s) => {
+            const rest = Object.fromEntries(Object.entries(s.actuals ?? {}).filter(([k]) => k !== ym));
+            const actuals = yen == null ? rest : { ...rest, [ym]: yen };
+            return { ...s, actuals: Object.keys(actuals).length ? actuals : undefined };
+          })}
         />
         {form}
       </>
@@ -106,9 +114,7 @@ export function Subscriptions() {
             </span>
             <span className="sub-sub">{on ? (next === t ? '今日請求' : next ? `次回 ${md(next)}` : '') : 'オフ'}</span>
           </span>
-          <span className="num sub-amount">
-            {formatYen(s.amount)}<small>/{s.cycle === 'monthly' ? '月' : '年'}</small>
-          </span>
+          <SubPrice sub={s} yen={currentYen(s, fx)} className="num sub-amount" />
         </button>
         <Switch on={on} onChange={() => toggle(s)} label={`${s.name}のオン/オフ`} />
       </SwipeRow>
