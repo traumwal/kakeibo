@@ -85,7 +85,7 @@ export function guessShopCategory(shop: string | undefined, expenses: Expense[],
   return undefined;
 }
 
-/** よく行くお店 (記録画面のボタン用)。お店 = 記録のメモ。最後に選んだ分類と支払い方法を一緒に覚えておく */
+/** よく使うメモ (記録画面のボタン用)。使ったもの (漫画・ランチ) でもお店 (100均) でもよい。最後に選んだ分類と支払い方法を一緒に覚えておく */
 export interface FrequentShop {
   shop: string;
   category: string;

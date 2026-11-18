@@ -339,7 +339,7 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
   /** ショートカットから開いたときの入力済みの値 */
   draft?: Partial<Expense>;
   categories: string[];
-  /** よく行くお店 (新しく記録するときだけ) */
+  /** よく使うメモ (新しく記録するときだけ) */
   shops: FrequentShop[];
   payments: string[];
   defaultPayment?: string;
@@ -421,14 +421,14 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
   return (
     <Modal title={initial ? '記録を編集' : '支出を記録'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
-        {draft && <p className="note">Apple Pay の支払いから入力しました。分類を確かめて保存してください</p>}
+        {draft && <p className="note">Apple Pay の支払いから入力しました。メモにはお店の名前が入っているので、使ったもの(漫画・ランチなど)に書き換えてもかまいません。分類を確かめて保存してください</p>}
         {draft && unsynced && <p className="note over">Safari で開いています。ホーム画面のアプリとはデータが別なので、設定の「クラウド同期」にログインしておくと、ここで保存した記録がアプリにも届きます</p>}
         <label>金額(円){mode === 'iPaid' && '・自分の分'}
           <input ref={amountRef} required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft} onChange={(e) => setMine(e.target.value)} />
         </label>
         {shops.length > 0 && (
           <div className="field">
-            <span className="field-label">よく行くお店(タップでお店・分類・支払い方法が入ります)</span>
+            <span className="field-label">よく使うメモ(タップで分類・支払い方法も入ります)</span>
             <div className="chips shop-chips">
               {shops.map((s) => (
                 <button type="button" key={s.shop} className={memo === s.shop ? 'chip on' : 'chip'} aria-pressed={memo === s.shop}
@@ -461,7 +461,7 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
             </div>
           </div>
         )}
-        <label>メモ<input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例: 焼肉 / 店名など" /></label>
+        <label>メモ<input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="例: 漫画 / ランチ / 100均" /></label>
 
         {!showFriends ? (
           <button type="button" className="link small-link left-align" onClick={() => setShowFriends(true)}>友達と立て替えがあった ›</button>
