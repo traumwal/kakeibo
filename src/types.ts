@@ -16,12 +16,22 @@ export interface Subscription {
   endDate?: string;
   /** 以前オンだった期間 (オフ → オンに戻したとき、過去の集計を残すため) */
   history?: Period[];
+  /** 請求日をずらした記録 (定期を買い直した日がずれたときなど)。古い順 */
+  shifts?: BillingShift[];
   /** どのくらい使っているかの自己評価 */
   usage?: UsageLevel;
   lastUsedAt?: string; // 「今日使った」ボタンで記録 (YYYY-MM-DD)
   usedDates?: string[]; // 「今日使った」を押した日 (直近90日分)
   payment?: string; // 支払い方法 (例: 楽天カード)
   memo?: string;
+}
+
+/** from の予定だった請求が to になった。以後は to の日 (年払いは to の月日) に請求 */
+export interface BillingShift {
+  from: string;
+  to: string;
+  /** ずらす前の請求日 (取り消したときに戻すため) */
+  prevDay: number;
 }
 
 export interface Period {

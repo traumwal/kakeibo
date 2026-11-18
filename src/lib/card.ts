@@ -1,5 +1,5 @@
 import type { CardRule, Subscription } from '../types';
-import { billingDateInMonth, type LedgerItem } from './calc';
+import { billingDatesInMonth, type LedgerItem } from './calc';
 import { addMonths, clampDay, ymOf } from './date';
 import { yenCharge } from './fx';
 import type { FxSettings } from '../types';
@@ -24,10 +24,10 @@ export function withdrawalDate(rule: CardRule, chargeDate: string): string {
 function subCharges(sub: Subscription, yms: string[], fx: FxSettings): LedgerItem[] {
   const out: LedgerItem[] = [];
   for (const ym of yms) {
-    const date = billingDateInMonth(sub, ym);
-    if (!date) continue;
-    const c = yenCharge(sub, date, fx);
-    out.push({ kind: 'sub', date, amount: c.yen, sub, count: 1, estimate: c.estimate });
+    for (const date of billingDatesInMonth(sub, ym)) {
+      const c = yenCharge(sub, date, fx);
+      out.push({ kind: 'sub', date, amount: c.yen, sub, count: 1, estimate: c.estimate });
+    }
   }
   return out;
 }
