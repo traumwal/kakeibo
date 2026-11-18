@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { clampDay, today, ymOf } from '../lib/date';
+import { today } from '../lib/date';
+import { firstPayDate } from '../lib/calc';
 import { uid } from '../lib/format';
 import { cleanDomain, guessDomain } from '../lib/logo';
 import { guessCategory, subCategoryLabel, subCategoryOptions, UNCLASSIFIED_SUB } from '../lib/categories';
@@ -18,7 +19,7 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
   const t = today();
   // 最初に払った日。ずらした記録があれば、ずらす前の請求日で数える
   const shifts = [...(initial?.shifts ?? [])].sort((a, b) => a.to.localeCompare(b.to));
-  const firstPay0 = initial ? clampDay(ymOf(initial.startDate), shifts[0]?.prevDay ?? initial.billingDay) : t;
+  const firstPay0 = initial ? firstPayDate(initial) : t;
   const [f, setF] = useState({
     name: initial?.name ?? '',
     domain: initial?.domain ?? '',
@@ -46,9 +47,9 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
     }));
   };
 
-  /** 最初に払った日から開始日と請求日を決める。日付を変えていなければ今のまま (31日払いの2月始まりなどを崩さない) */
+  /** 最初に払った日から開始日と請求日を決める。日付を変えていなければ請求日は今のまま (31日払いの2月始まりなどを崩さない) */
   const dates = (): Pick<Subscription, 'startDate' | 'billingDay' | 'shifts'> => {
-    if (initial && f.firstPay === firstPay0) return { startDate: initial.startDate, billingDay: initial.billingDay, shifts: initial.shifts };
+    if (initial && f.firstPay === firstPay0) return { startDate: f.firstPay, billingDay: initial.billingDay, shifts: initial.shifts };
     const day = Number(f.firstPay.slice(8, 10));
     if (shifts.length) return { startDate: f.firstPay, billingDay: initial!.billingDay, shifts: [{ ...shifts[0], prevDay: day }, ...shifts.slice(1)] };
     return { startDate: f.firstPay, billingDay: day, shifts: undefined };

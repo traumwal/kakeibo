@@ -1,4 +1,5 @@
-import type { AppData } from '../types';
+import type { AppData, Subscription } from '../types';
+import { alignStartDate } from './calc';
 
 const KEY = 'kakeibo:v1';
 
@@ -36,7 +37,7 @@ export function normalize(raw: unknown): AppData {
   const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
   return {
     version: 1,
-    subscriptions: arr(r.subscriptions),
+    subscriptions: arr<Subscription>(r.subscriptions).map(alignStartDate),
     expenses: arr(r.expenses),
     friends: arr(r.friends),
     repayments: arr(r.repayments),
