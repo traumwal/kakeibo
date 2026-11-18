@@ -84,3 +84,29 @@ export function guessShopCategory(shop: string | undefined, expenses: Expense[],
   }
   return undefined;
 }
+
+/** よく行くお店 (記録画面のボタン用)。お店 = 記録のメモ。最後に選んだ分類と支払い方法を一緒に覚えておく */
+export interface FrequentShop {
+  shop: string;
+  category: string;
+  payment?: string;
+  count: number;
+}
+
+/** 直近 days 日の記録から、回数の多い順 (同じなら新しい順) に limit 件。1回だけのお店も出す */
+export function frequentShops(expenses: Expense[], todayStr: string, limit = 8, days = 120): FrequentShop[] {
+  const from = new Date(new Date(todayStr).getTime() - days * 86400000).toISOString().slice(0, 10);
+  const map = new Map<string, FrequentShop & { last: string }>();
+  for (const e of [...expenses].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (!e.memo || e.date < from || e.date > todayStr) continue;
+    const key = normalizeName(e.memo);
+    if (!key) continue;
+    const prev = map.get(key);
+    // 表示名・分類・支払い方法は最後の記録に合わせる
+    map.set(key, { shop: e.memo.trim(), category: e.category, payment: e.payment, count: (prev?.count ?? 0) + 1, last: e.date });
+  }
+  return [...map.values()]
+    .sort((a, b) => b.count - a.count || b.last.localeCompare(a.last))
+    .slice(0, limit)
+    .map(({ shop, category, payment, count }) => ({ shop, category, payment, count }));
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import { categoryBreakdown, expensesInMonths, paymentBreakdown, sortGroups, NO_PAYMENT_LABEL, type CategoryGroup, type LedgerItem } from '../lib/calc';
 import { today, ymOf } from '../lib/date';
@@ -8,7 +8,7 @@ import { Modal } from '../components/Modal';
 import { SubIcon } from '../components/SubIcon';
 import { PeriodNav, usePeriod } from '../components/PeriodNav';
 import { statements, type Statement } from '../lib/card';
-import { guessShopCategory, matchPayment, type PayDraft } from '../lib/quickadd';
+import { frequentShops, guessShopCategory, matchPayment, type FrequentShop, type PayDraft } from '../lib/quickadd';
 
 type View = 'category' | 'date' | 'payment';
 const VIEWS: [View, string][] = [['category', '分類別'], ['date', '日付順'], ['payment', '支払い別']];
@@ -182,6 +182,7 @@ export function Expenses({ goSettings, draft, clearDraft }: { goSettings: () => 
             category: guessShopCategory(draft.shop, data.expenses, data.settings.categories),
           } : undefined}
           categories={data.settings.categories}
+          shops={editing === 'new' && !draft ? frequentShops(data.expenses, today()) : []}
           payments={data.settings.paymentMethods}
           defaultPayment={lastPayment}
           friends={data.friends}
@@ -333,11 +334,13 @@ function YearCardSummary({ card, list }: { card: string; list: Statement[] }) {
 
 type PayMode = 'self' | 'iPaid' | 'friendPaid';
 
-function ExpenseForm({ initial, draft, categories, payments, defaultPayment, friends, onSave, onClose, onDelete }: {
+function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayment, friends, onSave, onClose, onDelete }: {
   initial?: Expense;
   /** ショートカットから開いたときの入力済みの値 */
   draft?: Partial<Expense>;
   categories: string[];
+  /** よく行くお店 (新しく記録するときだけ) */
+  shops: FrequentShop[];
   payments: string[];
   defaultPayment?: string;
   friends: Friend[];
@@ -355,6 +358,7 @@ function ExpenseForm({ initial, draft, categories, payments, defaultPayment, fri
   const [memo, setMemo] = useState(initial?.memo ?? draft?.memo ?? '');
   const [payment, setPayment] = useState(initial ? initial.payment ?? '' : draft?.payment ?? (defaultPayment && payments.includes(defaultPayment) ? defaultPayment : ''));
   const [mode, setMode] = useState<PayMode>(initMode);
+  const amountRef = useRef<HTMLInputElement>(null);
   const [mine, setMine] = useState(initial ? String(initial.amount) : draft?.amount ? String(draft.amount) : '');
   const [total, setTotal] = useState(initial?.total != null ? String(initial.total) : '');
   const [allFriends, setAllFriends] = useState(friends);
@@ -420,8 +424,24 @@ function ExpenseForm({ initial, draft, categories, payments, defaultPayment, fri
         {draft && <p className="note">Apple Pay の支払いから入力しました。分類を確かめて保存してください</p>}
         {draft && unsynced && <p className="note over">Safari で開いています。ホーム画面のアプリとはデータが別なので、設定の「クラウド同期」にログインしておくと、ここで保存した記録がアプリにも届きます</p>}
         <label>金額(円){mode === 'iPaid' && '・自分の分'}
-          <input required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft} onChange={(e) => setMine(e.target.value)} />
+          <input ref={amountRef} required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft} onChange={(e) => setMine(e.target.value)} />
         </label>
+        {shops.length > 0 && (
+          <div className="field">
+            <span className="field-label">よく行くお店(タップでお店・分類・支払い方法が入ります)</span>
+            <div className="chips shop-chips">
+              {shops.map((s) => (
+                <button type="button" key={s.shop} className={memo === s.shop ? 'chip on' : 'chip'} aria-pressed={memo === s.shop}
+                  onClick={() => {
+                    setMemo(s.shop);
+                    if (categories.includes(s.category)) setCategory(s.category);
+                    setPayment(s.payment ?? '');
+                    amountRef.current?.focus();
+                  }}>{s.shop}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid2">
           <label>日付<input type="date" required value={date} onChange={(e) => setDate(e.target.value)} /></label>
           <label>カテゴリ
