@@ -151,6 +151,18 @@ export function shiftBilling(sub: Subscription, from: string, to: string): Subsc
   return { ...sub, billingDay: Number(to.slice(8, 10)), shifts: [...sortedShifts(sub), { from, to, prevDay: sub.billingDay }] };
 }
 
+/** 最初に払った日 (今の期間の、最初の請求日)。ずらした記録があれば、ずらす前の請求日で数える */
+export function firstPayDate(sub: Subscription): string {
+  return clampDay(ymOf(sub.startDate), sortedShifts(sub)[0]?.prevDay ?? sub.billingDay);
+}
+
+/** 開始日を最初に払った日にそろえる (以前は開始日と請求日を別々に入れていたため) */
+export function alignStartDate(sub: Subscription): Subscription {
+  if (typeof sub.startDate !== 'string' || typeof sub.billingDay !== 'number') return sub;
+  const first = firstPayDate(sub);
+  return first === sub.startDate ? sub : { ...sub, startDate: first };
+}
+
 /** 最後にずらしたのを取り消す */
 export function undoLastShift(sub: Subscription): Subscription {
   const shifts = sortedShifts(sub);

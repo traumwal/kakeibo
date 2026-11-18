@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   billingDateInMonth, categoryBreakdown, sortGroups, type LedgerItem, categoryTotals, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
   nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL, amountInMonth, turnOff, turnOn, isOn, markUsed, usesInLast, monthsOfYear, yearTrend,
-  paymentBreakdown, NO_PAYMENT_LABEL, axisTicks, billingDatesInMonth, shiftBilling, undoLastShift, defaultShiftFrom,
+  paymentBreakdown, NO_PAYMENT_LABEL, axisTicks, billingDatesInMonth, shiftBilling, undoLastShift, defaultShiftFrom, alignStartDate,
 } from './calc';
 import { emptyData } from './storage';
 import type { Expense, Subscription } from '../types';
@@ -300,5 +300,22 @@ describe('請求日をずらす (定期の買い直しなど)', () => {
 
   it('取り消すと元に戻る', () => {
     expect(undoLastShift(moved)).toEqual({ ...teiki, shifts: undefined });
+  });
+});
+
+describe('開始日を最初に払った日にそろえる', () => {
+  it('開始日の月の請求日を開始日にする', () => {
+    expect(alignStartDate(sub({ startDate: '2026-10-14', billingDay: 17 })).startDate).toBe('2026-10-17');
+    expect(alignStartDate(sub({ startDate: '2026-10-20', billingDay: 5 })).startDate).toBe('2026-10-05');
+    const s = sub({ startDate: '2026-02-01', billingDay: 31 });
+    expect(alignStartDate(s)).toEqual({ ...s, startDate: '2026-02-28' });
+  });
+  it('ずらしたものはずらす前の請求日で数える。そろっていれば同じものを返す', () => {
+    const moved = shiftBilling(sub({ startDate: '2026-10-14', billingDay: 14 }), '2026-11-14', '2026-11-16');
+    expect(alignStartDate(moved)).toBe(moved);
+  });
+  it('そろえても集計は変わらない', () => {
+    const s = sub({ startDate: '2026-10-14', billingDay: 17 });
+    for (const ym of ['2026-09', '2026-10', '2026-11']) expect(amountInMonth(alignStartDate(s), ym)).toBe(amountInMonth(s, ym));
   });
 });
