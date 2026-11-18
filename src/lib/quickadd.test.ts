@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessShopCategory, matchPayment, parseAmount, parsePayParams } from './quickadd';
+import { guessShopCategory, isPayLink, matchPayment, parseAmount, parsePayParams } from './quickadd';
 import type { Expense } from '../types';
 
 const CATS = ['外食', '食費', '日用品', '交通', '衣服・美容', 'その他'];
@@ -20,6 +20,13 @@ describe('ショートカットからの支払い', () => {
     expect(parsePayParams('?amount=500&shop=ローソン')).toEqual({ amount: 500, shop: 'ローソン', card: undefined });
     expect(parsePayParams('?foo=1')).toBeNull();
     expect(parsePayParams('?pay=')).toBeNull();
+  });
+
+  it('改札 (金額なし・0円) はショートカットからでも金額なしとわかる', () => {
+    expect(isPayLink('?pay=')).toBe(true);
+    expect(isPayLink('?foo=1')).toBe(false);
+    expect(parsePayParams('?pay=' + encodeURIComponent('¥0\n\nSuica'))?.amount).toBeUndefined();
+    expect(parsePayParams('?pay=' + encodeURIComponent('\n\nSuica'))).toBeNull();
   });
 
   it('ウォレットのカード名を支払い方法に合わせる', () => {

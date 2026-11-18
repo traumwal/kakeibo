@@ -17,6 +17,12 @@ export function parseAmount(text: string | null | undefined): number | undefined
   return n > 0 ? n : undefined;
 }
 
+/** ショートカットから開かれたか (?pay= か ?amount= がある) */
+export const isPayLink = (search: string) => {
+  const q = new URLSearchParams(search);
+  return q.has('pay') || q.has('amount');
+};
+
 /**
  * URL の ? 以降から支払いの情報を読む。
  * ショートカットでは「金額・加盟店・カード」を改行でつないで1つにし、URLエンコードして pay= に入れる。
