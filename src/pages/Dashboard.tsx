@@ -11,7 +11,7 @@ import { billingDatesUntil } from '../lib/calc';
 
 const isOnNow = (s: { endDate?: string }) => !s.endDate || s.endDate > today();
 
-export function Dashboard({ go }: { go: (t: Tab) => void }) {
+export function Dashboard({ go, onAdd }: { go: (t: Tab) => void; onAdd: () => void }) {
   const { data } = useStore();
   const [period, actions] = usePeriod();
   const nowYm = ymOf(today());
@@ -139,6 +139,7 @@ export function Dashboard({ go }: { go: (t: Tab) => void }) {
         <h2>推移</h2>
         <TrendChart data={isMonth ? monthlyTrend(data, period.ym, 6) : yearTrend(data, period.year, nowYm)} target={target} />
       </section>
+      <button className="fab" onClick={onAdd} aria-label="支出を記録">+</button>
     </div>
   );
 }
