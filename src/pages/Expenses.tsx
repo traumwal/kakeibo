@@ -182,7 +182,7 @@ export function Expenses({ goSettings, draft, clearDraft }: { goSettings: () => 
             category: guessShopCategory(draft.shop, data.expenses, data.settings.categories),
           } : undefined}
           categories={data.settings.categories}
-          shops={editing === 'new' && !draft ? frequentShops(data.expenses, today()) : []}
+          shops={editing === 'new' ? frequentShops(data.expenses, today()) : []}
           payments={data.settings.paymentMethods}
           defaultPayment={lastPayment}
           friends={data.friends}
@@ -421,21 +421,22 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
   return (
     <Modal title={initial ? '記録を編集' : '支出を記録'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
-        {draft && <p className="note">Apple Pay の支払いから入力しました。メモにはお店の名前が入っているので、使ったもの(漫画・ランチなど)に書き換えてもかまいません。分類を確かめて保存してください</p>}
+        {draft && <p className="note">Apple Pay の支払いから入力しました。メモにはお店の名前が入っています。下の「よく使うメモ」のボタンか手入力で、使ったもの(漫画・ランチなど)に置き換えられます。分類を確かめて保存してください</p>}
         {draft && unsynced && <p className="note over">Safari で開いています。ホーム画面のアプリとはデータが別なので、設定の「クラウド同期」にログインしておくと、ここで保存した記録がアプリにも届きます</p>}
         <label>金額(円){mode === 'iPaid' && '・自分の分'}
           <input ref={amountRef} required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft} onChange={(e) => setMine(e.target.value)} />
         </label>
         {shops.length > 0 && (
           <div className="field">
-            <span className="field-label">よく使うメモ(タップで分類・支払い方法も入ります)</span>
+            <span className="field-label">{draft ? 'よく使うメモ(タップでメモと分類を置き換えます)' : 'よく使うメモ(タップで分類・支払い方法も入ります)'}</span>
             <div className="chips shop-chips">
               {shops.map((s) => (
                 <button type="button" key={s.shop} className={memo === s.shop ? 'chip on' : 'chip'} aria-pressed={memo === s.shop}
                   onClick={() => {
                     setMemo(s.shop);
                     if (categories.includes(s.category)) setCategory(s.category);
-                    setPayment(s.payment ?? '');
+                    // Apple Pay から開いたときは、実際に払ったカードのままにする
+                    if (!draft) setPayment(s.payment ?? '');
                     amountRef.current?.focus();
                   }}>{s.shop}</button>
               ))}
