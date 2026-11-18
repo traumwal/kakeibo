@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { currentYen, isOn, markUsed, monthlyAmount, nextBillingDate, reviewCandidates, sortSubscriptions, turnOff, turnOn } from '../lib/calc';
+import { currentYen, isOn, markUsed, monthlyAmount, nextBillingDate, reviewCandidates, shiftBilling, sortSubscriptions, turnOff, turnOn, undoLastShift } from '../lib/calc';
 import { SubPrice } from '../components/Money';
 import { today } from '../lib/date';
 import { formatYen } from '../lib/format';
@@ -100,6 +100,8 @@ export function Subscriptions() {
             const actuals = yen == null ? rest : { ...rest, [ym]: yen };
             return { ...s, actuals: Object.keys(actuals).length ? actuals : undefined };
           })}
+          onShift={(from, to) => patch(selected.id, (s) => shiftBilling(s, from, to))}
+          onUndoShift={() => patch(selected.id, undoLastShift)}
         />
         {form}
       </>

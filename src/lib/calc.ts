@@ -1,4 +1,4 @@
-import type { AppData, Expense, Friend, FxSettings, Period, Repayment, Settings, Subscription, YearlyMode } from '../types';
+import type { AppData, BillingShift, Expense, Friend, FxSettings, Period, Repayment, Settings, Subscription, YearlyMode } from '../types';
 import { yenCharge } from './fx';
 import { effectiveSubCategory, ESSENTIAL_SUB_CATEGORIES, UNCLASSIFIED_SUB } from './categories';
 import { addMonths, clampDay, daysBetween, monthEnd, monthStart, ymOf } from './date';
@@ -66,32 +66,52 @@ export function turnOn(sub: Subscription, date: string): Subscription {
 /** 次回の請求日 (基準日を含む) */
 export function nextBillingDate(sub: Subscription, from: string): string | null {
   if (sub.endDate && sub.endDate < from) return null;
-  const fromYm = ymOf(from);
-  if (sub.cycle === 'monthly') {
-    let ym = fromYm;
-    let d = clampDay(ym, sub.billingDay);
-    if (d < from) {
-      ym = addMonths(ym, 1);
-      d = clampDay(ym, sub.billingDay);
-    }
-    return d < sub.startDate ? clampDay(ymOf(sub.startDate), sub.billingDay) : d;
+  let ym = ymOf(from) < ymOf(sub.startDate) ? ymOf(sub.startDate) : ymOf(from);
+  for (let i = 0; i < 25; i++, ym = addMonths(ym, 1)) {
+    const d = billingDatesInMonth(sub, ym).find((x) => x >= from);
+    if (d) return d;
   }
-  const month = sub.startDate.slice(5, 7);
-  let year = Number(from.slice(0, 4));
-  let d = clampDay(`${year}-${month}`, sub.billingDay);
-  if (d < from) {
-    year += 1;
-    d = clampDay(`${year}-${month}`, sub.billingDay);
-  }
-  return d;
+  return null;
 }
 
-/** その月の請求日。年払いはその期間の開始月にだけ請求 */
-export function billingDateInMonth(sub: Subscription, ym: string): string | null {
+const sortedShifts = (sub: Subscription): BillingShift[] => [...(sub.shifts ?? [])].sort((a, b) => a.to.localeCompare(b.to));
+
+/** 請求日をずらした記録で区切った、請求のきまり。lo より後・hi より前の日だけ、day の日に請求 (年払いは anchor の月) */
+interface Segment { day: number; anchor?: string; lo?: string; hi?: string }
+
+function segmentsOf(sub: Subscription): Segment[] {
+  const segs: Segment[] = [];
+  let lo: string | undefined;
+  for (const s of sortedShifts(sub)) {
+    segs.push({ day: s.prevDay, anchor: lo, lo, hi: s.from < s.to ? s.from : s.to });
+    lo = s.to;
+  }
+  segs.push({ day: sub.billingDay, anchor: lo, lo });
+  return segs;
+}
+
+/** その月の請求日すべて (古い順)。年払いはその期間の開始月 (ずらしたあとはずらした月) にだけ請求 */
+export function billingDatesInMonth(sub: Subscription, ym: string): string[] {
   const p = periodInMonth(sub, ym);
-  if (!p) return null;
-  if (sub.cycle === 'yearly' && p.start.slice(5, 7) !== ym.slice(5, 7)) return null;
-  return clampDay(ym, sub.billingDay);
+  if (!p) return [];
+  const out = new Set<string>();
+  for (const s of sub.shifts ?? []) if (ymOf(s.to) === ym) out.add(s.to);
+  for (const seg of segmentsOf(sub)) {
+    if (sub.cycle === 'yearly') {
+      const anchor = seg.anchor && seg.anchor >= p.start ? seg.anchor : p.start;
+      if (anchor.slice(5, 7) !== ym.slice(5, 7)) continue;
+    }
+    const d = clampDay(ym, seg.day);
+    if ((seg.lo && d <= seg.lo) || (seg.hi && d >= seg.hi)) continue;
+    out.add(d);
+  }
+  return [...out].sort();
+}
+
+/** その月の請求日 (2回あるときは後のほう)。請求がなければ null */
+export function billingDateInMonth(sub: Subscription, ym: string): string | null {
+  const ds = billingDatesInMonth(sub, ym);
+  return ds.length ? ds[ds.length - 1] : null;
 }
 
 /** 年払いで、その月が含まれる1年分の請求日 (その月以前で直近の請求。期間の最初より前なら最初の請求) */
@@ -99,10 +119,44 @@ function yearlyBillingFor(sub: Subscription, ym: string): string | null {
   const p = periodInMonth(sub, ym);
   if (!p) return null;
   const startYm = ymOf(p.start);
-  let y = Number(ym.slice(0, 4));
-  if (`${y}-${startYm.slice(5)}` > ym) y -= 1;
-  const billYm = `${y}-${startYm.slice(5)}`;
-  return clampDay(billYm < startYm ? startYm : billYm, sub.billingDay);
+  for (let m = ym, i = 0; m >= startYm && i < 24; m = addMonths(m, -1), i++) {
+    const d = billingDateInMonth(sub, m);
+    if (d) return d;
+  }
+  return clampDay(startYm, sub.billingDay);
+}
+
+/** date の前後の、今の予定の請求日 (date ちょうどの予定は next) */
+export function scheduledAround(sub: Subscription, date: string): { prev: string | null; next: string | null } {
+  let prev: string | null = null;
+  let next: string | null = null;
+  const ym = ymOf(date);
+  for (let i = 0; i <= 24 && (!prev || !next); i++) {
+    if (!prev) prev = billingDatesInMonth(sub, addMonths(ym, -i)).filter((d) => d < date).pop() ?? null;
+    if (!next) next = billingDatesInMonth(sub, addMonths(ym, i)).find((d) => d >= date) ?? null;
+  }
+  return { prev, next };
+}
+
+/** to に請求があったとき、どの予定の分か (近いほう) */
+export function defaultShiftFrom(sub: Subscription, to: string): string | null {
+  const { prev, next } = scheduledAround(sub, to);
+  if (!prev || !next) return prev ?? next;
+  return daysBetween(prev, to) <= daysBetween(to, next) ? prev : next;
+}
+
+/** from の予定だった請求を to にずらす。以後は to の日を請求日にする */
+export function shiftBilling(sub: Subscription, from: string, to: string): Subscription {
+  if (from === to) return sub;
+  return { ...sub, billingDay: Number(to.slice(8, 10)), shifts: [...sortedShifts(sub), { from, to, prevDay: sub.billingDay }] };
+}
+
+/** 最後にずらしたのを取り消す */
+export function undoLastShift(sub: Subscription): Subscription {
+  const shifts = sortedShifts(sub);
+  const last = shifts.pop();
+  if (!last) return sub;
+  return { ...sub, billingDay: last.prevDay, shifts: shifts.length ? shifts : undefined };
 }
 
 /** その月に計上する円の額。年払いは設定に応じて 月割り(÷12) か 請求月にまとめて。ドルは請求日のレートで換算 */
@@ -111,8 +165,7 @@ export function amountInMonth(sub: Subscription, ym: string, opts: AmountOpts = 
   if (sub.cycle === 'yearly' && opts.yearlyMode === 'spread') {
     return yenCharge(sub, yearlyBillingFor(sub, ym), opts.fx).yen / 12;
   }
-  const date = billingDateInMonth(sub, ym);
-  return date ? yenCharge(sub, date, opts.fx).yen : 0;
+  return billingDatesInMonth(sub, ym).reduce((sum, d) => sum + yenCharge(sub, d, opts.fx).yen, 0);
 }
 
 export function subscriptionTotalForMonth(subs: Subscription[], ym: string, opts: AmountOpts = DEFAULT_OPTS): number {
@@ -351,8 +404,7 @@ export function billingDatesUntil(sub: Subscription, todayStr: string): string[]
   const first = ymOf([...(sub.history ?? []).map((p) => p.start), sub.startDate].sort()[0]);
   const out: string[] = [];
   for (let ym = first; ym <= ymOf(todayStr); ym = addMonths(ym, 1)) {
-    const d = billingDateInMonth(sub, ym);
-    if (d && d <= todayStr) out.push(d);
+    for (const d of billingDatesInMonth(sub, ym)) if (d <= todayStr) out.push(d);
   }
   return out;
 }

@@ -1,6 +1,6 @@
 import { effectiveSubCategory, isAutoSubCategory, subCategoryLabel } from '../lib/categories';
 import { useState } from 'react';
-import { billingDateInMonth, currentYen, isOn, monthlyAmount, nextBillingDate, usesInLast, yearlyAmount, type ReviewCandidate, type ReviewReason } from '../lib/calc';
+import { billingDateInMonth, currentYen, defaultShiftFrom, scheduledAround, isOn, monthlyAmount, nextBillingDate, usesInLast, yearlyAmount, type ReviewCandidate, type ReviewReason } from '../lib/calc';
 import { isUsd, recentMonths, yenCharge } from '../lib/fx';
 import { SubPrice, formatUsd } from '../components/Money';
 import { daysBetween, today } from '../lib/date';
@@ -8,6 +8,7 @@ import { formatYen } from '../lib/format';
 import type { FxSettings, Subscription, UsageLevel } from '../types';
 import { SubIcon } from '../components/SubIcon';
 import { Switch } from '../components/Switch';
+import { Modal } from '../components/Modal';
 
 export function reasonText(r: ReviewReason): string {
   switch (r.kind) {
@@ -21,7 +22,7 @@ const USAGE: [UsageLevel, string][] = [['often', 'よく使う'], ['sometimes', 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8))}`;
 const ymd = (d: string) => `${d.slice(0, 4)}/${md(d)}`;
 
-export function SubscriptionDetail({ sub, review, onBack, onEdit, onToggle, onDelete, onMarkUsed, onUsage, fx, onActual }: {
+export function SubscriptionDetail({ sub, review, onBack, onEdit, onToggle, onDelete, onMarkUsed, onUsage, fx, onActual, onShift, onUndoShift }: {
   sub: Subscription;
   review?: ReviewCandidate;
   onBack: () => void;
@@ -32,9 +33,13 @@ export function SubscriptionDetail({ sub, review, onBack, onEdit, onToggle, onDe
   onUsage: (u: UsageLevel | undefined) => void;
   fx: FxSettings;
   onActual: (ym: string, yen: number | null) => void;
+  onShift: (from: string, to: string) => void;
+  onUndoShift: () => void;
 }) {
   const t = today();
   const on = isOn(sub, t);
+  const [shifting, setShifting] = useState(false);
+  const lastShift = sub.shifts?.length ? [...sub.shifts].sort((a, b) => a.to.localeCompare(b.to)).pop()! : null;
   const next = nextBillingDate(sub, t);
   const uses = usesInLast(sub, t, 30);
 
@@ -102,10 +107,57 @@ export function SubscriptionDetail({ sub, review, onBack, onEdit, onToggle, onDe
           <dt>開始日</dt><dd>{ymd(sub.startDate)}</dd>
           {sub.memo && (<><dt>メモ</dt><dd>{sub.memo}</dd></>)}
         </dl>
+        {on && (
+          <button className="btn block shift-btn" onClick={() => setShifting(true)}>請求日をずらす(買い直した日がずれたとき)</button>
+        )}
+        {lastShift && (
+          <p className="note row">
+            <span className="grow">{ymd(lastShift.from)} の予定を {ymd(lastShift.to)} にずらしました</span>
+            <button className="btn small" onClick={onUndoShift}>取り消す</button>
+          </p>
+        )}
       </section>
+
+      {shifting && <ShiftDialog sub={sub} onClose={() => setShifting(false)} onSave={(from, to) => { onShift(from, to); setShifting(false); }} />}
 
       <button className="btn danger block" onClick={onDelete}>このサブスクを削除</button>
     </div>
+  );
+}
+
+/** 実際に払った日と、どの予定の分かを選んで請求日をずらす */
+function ShiftDialog({ sub, onClose, onSave }: { sub: Subscription; onClose: () => void; onSave: (from: string, to: string) => void }) {
+  const [to, setTo] = useState(today());
+  const [picked, setPicked] = useState<string | null>(null);
+  const { prev, next } = to ? scheduledAround(sub, to) : { prev: null, next: null };
+  const options = [prev, next].filter((d): d is string => d != null);
+  const from = picked && options.includes(picked) ? picked : to ? defaultShiftFrom(sub, to) : null;
+  const day = Number(to.slice(8, 10));
+  const valid = !!to && !!from && from !== to;
+  return (
+    <Modal title="請求日をずらす" onClose={onClose}>
+      <form className="form" onSubmit={(e) => { e.preventDefault(); if (valid) onSave(from!, to); }}>
+        <label>実際に払った日(買い直した日)
+          <input type="date" required value={to} onChange={(e) => { setTo(e.target.value); setPicked(null); }} />
+        </label>
+        {options.length > 0 && (
+          <label>どの予定の分?
+            <select value={from ?? ''} onChange={(e) => setPicked(e.target.value)}>
+              {options.map((d) => <option key={d} value={d}>{ymd(d)} の予定{d < to ? '(遅れて払った)' : '(早めに払った)'}</option>)}
+            </select>
+          </label>
+        )}
+        {valid ? (
+          <p className="note">
+            {ymd(from!)} の請求をやめて {ymd(to)} に払ったことにします。
+            以後は{sub.cycle === 'yearly' ? `毎年${md(to)}` : `毎月${day}日`}に請求します
+          </p>
+        ) : (
+          to && from === to && <p className="note">その日はもともと請求日です</p>
+        )}
+        <button className="btn primary block" type="submit" disabled={!valid}>ずらす</button>
+      </form>
+    </Modal>
   );
 }
 

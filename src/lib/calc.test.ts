@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   billingDateInMonth, categoryBreakdown, sortGroups, type LedgerItem, categoryTotals, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
   nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL, amountInMonth, turnOff, turnOn, isOn, markUsed, usesInLast, monthsOfYear, yearTrend,
-  paymentBreakdown, NO_PAYMENT_LABEL, axisTicks,
+  paymentBreakdown, NO_PAYMENT_LABEL, axisTicks, billingDatesInMonth, shiftBilling, undoLastShift, defaultShiftFrom,
 } from './calc';
 import { emptyData } from './storage';
 import type { Expense, Subscription } from '../types';
@@ -261,5 +261,44 @@ describe('分類を選んでいないサブスク', () => {
     };
     const g = categoryBreakdown(data, '2026-11');
     expect(g.map((x) => [x.category, x.amount, x.fixed])).toEqual([['交通', 10500, 10000], [SUBSCRIPTION_LABEL, 300, 300]]);
+  });
+});
+
+describe('請求日をずらす (定期の買い直しなど)', () => {
+  // 10/14 に買った定期が 11/13 に切れて、11/16 に買い直した
+  const teiki = sub({ name: '定期', amount: 10000, billingDay: 14, startDate: '2026-10-14' });
+  const moved = shiftBilling(teiki, '2026-11-14', '2026-11-16');
+
+  it('ずらした月はずらした日に1回だけ、以後は新しい日に請求', () => {
+    expect(billingDatesInMonth(moved, '2026-10')).toEqual(['2026-10-14']);
+    expect(billingDatesInMonth(moved, '2026-11')).toEqual(['2026-11-16']);
+    expect(billingDatesInMonth(moved, '2026-12')).toEqual(['2026-12-16']);
+    expect(amountInMonth(moved, '2026-11')).toBe(10000);
+    expect(moved.billingDay).toBe(16);
+  });
+
+  it('次回の請求日と、どの予定の分かの初期値', () => {
+    expect(nextBillingDate(moved, '2026-11-15')).toBe('2026-11-16');
+    expect(nextBillingDate(moved, '2026-11-17')).toBe('2026-12-16');
+    expect(defaultShiftFrom(teiki, '2026-11-16')).toBe('2026-11-14');
+    expect(defaultShiftFrom(teiki, '2026-12-10')).toBe('2026-12-14');
+  });
+
+  it('早めに買い直したら同じ月に2回の請求になる', () => {
+    const early = shiftBilling(sub({ billingDay: 1, startDate: '2026-10-01' }), '2026-12-01', '2026-11-29');
+    expect(billingDatesInMonth(early, '2026-11')).toEqual(['2026-11-01', '2026-11-29']);
+    expect(billingDatesInMonth(early, '2026-12')).toEqual(['2026-12-29']);
+  });
+
+  it('年払いはずらした月日から1年ごと', () => {
+    const y = shiftBilling(sub({ cycle: 'yearly', billingDay: 1, startDate: '2025-04-01' }), '2026-04-01', '2026-05-20');
+    expect(billingDatesInMonth(y, '2026-04')).toEqual([]);
+    expect(billingDatesInMonth(y, '2026-05')).toEqual(['2026-05-20']);
+    expect(nextBillingDate(y, '2026-06-01')).toBe('2027-05-20');
+    expect(billingDatesInMonth(y, '2025-04')).toEqual(['2025-04-01']);
+  });
+
+  it('取り消すと元に戻る', () => {
+    expect(undoLastShift(moved)).toEqual({ ...teiki, shifts: undefined });
   });
 });
