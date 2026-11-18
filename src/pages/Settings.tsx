@@ -8,6 +8,8 @@ import { today } from '../lib/date';
 import { billingDatesUntil } from '../lib/calc';
 import { cardRate, fetchRates, isUsd } from '../lib/fx';
 import { CloudSync } from '../components/CloudSync';
+import { Switch } from '../components/Switch';
+import { loadOpenOnLaunch, saveOpenOnLaunch } from '../lib/launch';
 
 export function Settings() {
   const { data, update, replace } = useStore();
@@ -149,6 +151,8 @@ export function Settings() {
           </ul>
         </details>
       </section>
+
+      <LaunchSection />
 
       <ShortcutSection />
 
@@ -333,6 +337,20 @@ function PaymentRow({ name, rule, onRule, onRemove }: {
 }
 
 /** ドル円の換算。レートは自動で取ってくるので、ふだんは手数料だけ合わせればよい */
+/** アプリを開いたらすぐ記録画面を出す (端末ごとの設定) */
+function LaunchSection() {
+  const [on, setOn] = useState(loadOpenOnLaunch);
+  return (
+    <section className="card">
+      <div className="row">
+        <h2 className="grow">開いたらすぐ記録</h2>
+        <Switch on={on} onChange={() => { saveOpenOnLaunch(!on); setOn(!on); }} label="アプリを開いたらすぐ記録画面を出す" />
+      </div>
+      <p className="note">オンにすると、アプリを開いたとき(1分以上使っていなかったあとに戻ってきたときも)に記録画面が出ます。払ったあとすぐ記録したいときに便利です。この端末だけの設定です</p>
+    </section>
+  );
+}
+
 /** iPhone のショートカットで、Apple Pay で払ったときに記録画面を開く設定の手順 */
 function ShortcutSection() {
   const base = new URL(import.meta.env.BASE_URL, location.origin).href;

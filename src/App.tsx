@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from './hooks/useStore';
 import { Dashboard } from './pages/Dashboard';
 import { Subscriptions } from './pages/Subscriptions';
@@ -7,6 +7,7 @@ import { Friends } from './pages/Friends';
 import { Settings } from './pages/Settings';
 import { FxUpdater } from './components/FxUpdater';
 import { isPayLink, parsePayParams, type PayDraft } from './lib/quickadd';
+import { loadOpenOnLaunch, RESUME_AFTER_MS } from './lib/launch';
 
 export type Tab = 'home' | 'subs' | 'expenses' | 'friends' | 'settings';
 
@@ -27,7 +28,23 @@ export default function App() {
     return d?.amount ? d : null;
   });
   const [notice, setNotice] = useState<string | null>(() => (fromLink && !draft ? '0円(または金額なし)の支払いなので記録しませんでした' : null));
-  const [tab, setTab] = useState<Tab>(() => (draft ? 'expenses' : 'home'));
+  // 記録画面を開く合図 (記録タブが開いたら消す)。設定がオンなら、開いたときに最初から開く
+  const [formRequested, setFormRequested] = useState(() => !fromLink && loadOpenOnLaunch());
+  const [tab, setTab] = useState<Tab>(() => (draft || formRequested ? 'expenses' : 'home'));
+  const openForm = () => {
+    setTab('expenses');
+    setFormRequested(true);
+  };
+  // しばらく使っていなかったあとにアプリへ戻ってきたときも、設定がオンなら記録画面を開く
+  const hiddenAt = useRef<number | null>(null);
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') hiddenAt.current = Date.now();
+      else if (hiddenAt.current && Date.now() - hiddenAt.current > RESUME_AFTER_MS && loadOpenOnLaunch()) openForm();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
   useEffect(() => {
     // 再読み込みでもう一度開かないように、URL から消しておく
     if (fromLink) history.replaceState(history.state, '', location.pathname);
@@ -44,9 +61,9 @@ export default function App() {
       {notice && <div className="toast" role="status" onClick={() => setNotice(null)}>{notice}</div>}
       {saveError && <div className="banner">データを保存できませんでした(プライベートブラウズや容量不足の可能性があります)</div>}
       <main>
-        {tab === 'home' && <Dashboard go={setTab} />}
+        {tab === 'home' && <Dashboard go={setTab} onAdd={openForm} />}
         {tab === 'subs' && <Subscriptions />}
-        {tab === 'expenses' && <Expenses draft={draft} clearDraft={() => setDraft(null)} goSettings={() => { setTab('settings'); window.scrollTo(0, 0); }} />}
+        {tab === 'expenses' && <Expenses draft={draft} clearDraft={() => setDraft(null)} formRequested={formRequested} clearFormRequest={() => setFormRequested(false)} goSettings={() => { setTab('settings'); window.scrollTo(0, 0); }} />}
         {tab === 'friends' && <Friends />}
         {tab === 'settings' && <Settings />}
       </main>

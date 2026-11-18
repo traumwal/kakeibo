@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
 import { categoryBreakdown, expensesInMonths, paymentBreakdown, sortGroups, NO_PAYMENT_LABEL, type CategoryGroup, type LedgerItem } from '../lib/calc';
 import { today, ymOf } from '../lib/date';
@@ -27,10 +27,22 @@ const loadBasis = (): 'use' | 'withdraw' => {
 const allMonthsOf = (year: number) => Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
 const md = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
 
-export function Expenses({ goSettings, draft, clearDraft }: { goSettings: () => void; draft?: PayDraft | null; clearDraft?: () => void }) {
+export function Expenses({ goSettings, draft, clearDraft, formRequested, clearFormRequest }: {
+  goSettings: () => void;
+  draft?: PayDraft | null;
+  clearDraft?: () => void;
+  formRequested?: boolean;
+  clearFormRequest?: () => void;
+}) {
   const { data, update } = useStore();
   const [period, actions] = usePeriod();
-  const [editing, setEditingState] = useState<Expense | 'new' | null>(draft ? 'new' : null);
+  const [editing, setEditingState] = useState<Expense | 'new' | null>(draft || formRequested ? 'new' : null);
+  // ホームの「+」や、アプリを開いたときの合図で記録画面を開く (別の記録を編集中なら邪魔しない)。合図は一度で消す
+  useEffect(() => {
+    if (!formRequested) return;
+    setEditingState((cur) => cur ?? 'new');
+    clearFormRequest?.();
+  }, [formRequested]); // eslint-disable-line react-hooks/exhaustive-deps
   const setEditing = (v: Expense | 'new' | null) => {
     if (v === null) clearDraft?.();
     setEditingState(v);
