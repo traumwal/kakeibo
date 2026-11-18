@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { today } from '../lib/date';
+import { clampDay, today, ymOf } from '../lib/date';
 import { uid } from '../lib/format';
 import { cleanDomain, guessDomain } from '../lib/logo';
 import { guessCategory, subCategoryLabel, subCategoryOptions, UNCLASSIFIED_SUB } from '../lib/categories';
@@ -16,16 +16,18 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
   onDelete: (id: string) => void;
 }) {
   const t = today();
+  // 最初に払った日。ずらした記録があれば、ずらす前の請求日で数える
+  const shifts = [...(initial?.shifts ?? [])].sort((a, b) => a.to.localeCompare(b.to));
+  const firstPay0 = initial ? clampDay(ymOf(initial.startDate), shifts[0]?.prevDay ?? initial.billingDay) : t;
   const [f, setF] = useState({
     name: initial?.name ?? '',
     domain: initial?.domain ?? '',
     amount: initial ? String(initial.amount) : '',
     currency: initial?.currency ?? 'JPY',
     cycle: initial?.cycle ?? 'monthly',
-    billingDay: String(initial?.billingDay ?? Number(t.slice(8))),
+    firstPay: firstPay0,
     // 分類を選んでいない以前のサブスクは、名前から推測した分類を最初から選んでおく
     category: initial && initial.category !== UNCLASSIFIED_SUB ? initial.category : guessCategory(initial?.name ?? '') ?? UNCLASSIFIED_SUB,
-    startDate: initial?.startDate ?? t,
     payment: initial?.payment ?? '',
     memo: initial?.memo ?? '',
   });
@@ -44,6 +46,14 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
     }));
   };
 
+  /** 最初に払った日から開始日と請求日を決める。日付を変えていなければ今のまま (31日払いの2月始まりなどを崩さない) */
+  const dates = (): Pick<Subscription, 'startDate' | 'billingDay' | 'shifts'> => {
+    if (initial && f.firstPay === firstPay0) return { startDate: initial.startDate, billingDay: initial.billingDay, shifts: initial.shifts };
+    const day = Number(f.firstPay.slice(8, 10));
+    if (shifts.length) return { startDate: f.firstPay, billingDay: initial!.billingDay, shifts: [{ ...shifts[0], prevDay: day }, ...shifts.slice(1)] };
+    return { startDate: f.firstPay, billingDay: day, shifts: undefined };
+  };
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
@@ -54,9 +64,8 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
       amount: Number(f.amount),
       currency: f.currency === 'USD' ? 'USD' : undefined,
       cycle: f.cycle as Subscription['cycle'],
-      billingDay: Math.min(31, Math.max(1, Number(f.billingDay) || 1)),
       category: f.category,
-      startDate: f.startDate,
+      ...dates(),
       payment: f.payment || undefined,
       memo: f.memo.trim() || undefined,
     });
@@ -92,15 +101,9 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
           </label>
         </div>
         <div className="grid2">
-          <label>請求日<input type="number" min="1" max="31" value={f.billingDay} onChange={set('billingDay')} /></label>
-          <label>分類
-            <select value={f.category} onChange={(e) => { setAutoCategory(false); set('category')(e); }}>
-              {subCategoryOptions(categories, f.category).map((c) => <option key={c} value={c}>{subCategoryLabel(c)}</option>)}
-            </select>
+          <label>{initial?.history?.length ? '再開して最初に払った日' : '最初に払った日'}
+            <input required type="date" value={f.firstPay} onChange={set('firstPay')} />
           </label>
-        </div>
-        <div className="grid2">
-          <label>開始日<input required type="date" value={f.startDate} onChange={set('startDate')} /></label>
           <label>支払い方法
             <select value={f.payment} onChange={set('payment')}>
               <option value="">未設定</option>
@@ -108,8 +111,20 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
             </select>
           </label>
         </div>
+        {f.firstPay && !shifts.length && (
+          <p className="note">
+            {f.cycle === 'yearly'
+              ? `毎年${Number(f.firstPay.slice(5, 7))}月${Number(f.firstPay.slice(8, 10))}日に請求します。`
+              : `毎月${Number(f.firstPay.slice(8, 10))}日に請求します。`}
+            ずっと前から使っていて覚えていなければ、最近払った日を入れてください(その月から集計します)
+          </p>
+        )}
+        <label>分類
+          <select value={f.category} onChange={(e) => { setAutoCategory(false); set('category')(e); }}>
+            {subCategoryOptions(categories, f.category).map((c) => <option key={c} value={c}>{subCategoryLabel(c)}</option>)}
+          </select>
+        </label>
         <p className="note">分類は「何に使っているか」です。定期券なら「交通」、動画や音楽は「趣味・娯楽」、ChatGPT などは「AI・ツール」。カテゴリ別のグラフでは、その分類に固定費として入ります</p>
-        {f.cycle === 'yearly' && <p className="note">年払いは開始日の月に請求される扱いです</p>}
         {f.currency === 'USD' && (
           <p className="note">円の額は請求日のレート(カードの海外手数料込み)で自動で換算します。カードの明細が来たら、詳細画面で実際の額に直せます</p>
         )}

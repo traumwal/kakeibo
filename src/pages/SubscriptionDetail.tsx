@@ -104,7 +104,7 @@ export function SubscriptionDetail({ sub, review, onBack, onEdit, onToggle, onDe
           <dd>{on && next ? `${md(next)}(${next === t ? '今日' : `あと${daysBetween(t, next)}日`})` : '—'}</dd>
           <dt>支払い方法</dt><dd>{sub.payment ?? '未設定'}</dd>
           <dt>分類</dt><dd>{subCategoryLabel(effectiveSubCategory(sub))}{isAutoSubCategory(sub) && <small className="muted">(名前から自動)</small>}</dd>
-          <dt>開始日</dt><dd>{ymd(sub.startDate)}</dd>
+          <dt>請求日</dt><dd>{sub.cycle === 'yearly' ? `毎年${md(nextBillingDate(sub, t) ?? sub.startDate)}` : `毎月${sub.billingDay}日`}</dd>
           {sub.memo && (<><dt>メモ</dt><dd>{sub.memo}</dd></>)}
         </dl>
         {on && (
