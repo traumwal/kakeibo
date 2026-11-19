@@ -3,6 +3,7 @@ import {
   billingDateInMonth, categoryBreakdown, sortGroups, type LedgerItem, categoryTotals, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
   nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL, amountInMonth, turnOff, turnOn, isOn, markUsed, usesInLast, monthsOfYear, yearTrend,
   paymentBreakdown, NO_PAYMENT_LABEL, axisTicks, billingDatesInMonth, shiftBilling, undoLastShift, defaultShiftFrom, alignStartDate,
+  subscriptionYear,
 } from './calc';
 import { emptyData } from './storage';
 import type { Expense, Subscription } from '../types';
@@ -144,6 +145,11 @@ describe('年間の集計', () => {
     expect(monthsOfYear(2026, '2026-03')).toEqual(['2026-01', '2026-02', '2026-03']);
     expect(monthsOfYear(2025, '2026-03')).toHaveLength(12);
     expect(monthsOfYear(2027, '2026-03')).toEqual([]);
+  });
+  it('サブスクの年合計: オフにしても、オンだった月の分は残る', () => {
+    // 1月から月1000円、3月にオフ。もう1件は今もオンで月500円
+    const subs = [turnOff(sub({ name: 'a', startDate: '2026-01-10' }), '2026-03-15'), sub({ name: 'b', amount: 500, startDate: '2026-01-10' })];
+    expect(subscriptionYear(subs, 2026, '2026-05')).toEqual({ sofar: 3000 + 2500, forecast: 3500 });
   });
   it('1年分の推移は12ヶ月で、先の月は0', () => {
     const data = { ...emptyData(), subscriptions: [sub({ amount: 1000, startDate: '2025-01-01' })] };

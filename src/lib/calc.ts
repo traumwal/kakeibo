@@ -199,6 +199,22 @@ export function monthsOfYear(year: number, todayYm: string): string[] {
   return all.filter((ym) => ym <= todayYm);
 }
 
+/**
+ * その年のサブスク・固定費の合計。今月まではダッシュボードの年合計と同じ額 (オフにしたものも、オンだった月の分は入る)、
+ * 来月以降は今オンのものがこのまま続いた場合の見込み
+ */
+export function subscriptionYear(subs: Subscription[], year: number, todayYm: string, opts: AmountOpts = DEFAULT_OPTS): { sofar: number; forecast: number } {
+  let sofar = 0;
+  let forecast = 0;
+  for (let i = 1; i <= 12; i++) {
+    const ym = `${year}-${String(i).padStart(2, '0')}`;
+    const amount = subscriptionTotalForMonth(subs, ym, opts);
+    if (ym <= todayYm) sofar += amount;
+    else forecast += amount;
+  }
+  return { sofar, forecast };
+}
+
 export interface MonthSummary {
   ym: string;
   subscriptions: number;

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { currentYen, isOn, markUsed, monthlyAmount, nextBillingDate, reviewCandidates, shiftBilling, sortSubscriptions, turnOff, turnOn, undoLastShift } from '../lib/calc';
+import { currentYen, isOn, markUsed, monthlyAmount, nextBillingDate, reviewCandidates, shiftBilling, sortSubscriptions, subscriptionYear, turnOff, turnOn, undoLastShift } from '../lib/calc';
 import { SubPrice } from '../components/Money';
-import { today } from '../lib/date';
+import { today, ymOf } from '../lib/date';
 import { formatYen } from '../lib/format';
 import type { Subscription, UsageLevel } from '../types';
 import { SubIcon } from '../components/SubIcon';
@@ -25,6 +25,10 @@ export function Subscriptions() {
   const active = sorted.filter((s) => isOn(s, t));
   const off = sorted.filter((s) => !isOn(s, t));
   const monthly = active.reduce((s, x) => s + monthlyAmount(x, fx), 0);
+  // 年の合計はオフにしたものも、オンだった月の分を含める (今月まで実績、来月以降は見込み)
+  const nowYm = ymOf(t);
+  const year = Number(nowYm.slice(0, 4));
+  const yearTotal = subscriptionYear(data.subscriptions, year, nowYm, data.settings);
   const reviews = reviewCandidates(data.subscriptions, data.settings, t);
   const flagged = new Set(reviews.map((c) => c.sub.id));
   const selected = data.subscriptions.find((s) => s.id === selectedId);
@@ -139,9 +143,13 @@ export function Subscriptions() {
             <div className="big num">{formatYen(monthly)}</div>
           </div>
           <div>
-            <div className="label">年間にすると</div>
-            <div className="big num">{formatYen(monthly * 12)}</div>
+            <div className="label">{year}年の合計</div>
+            <div className="big num">{formatYen(yearTotal.sofar + yearTotal.forecast)}</div>
           </div>
+        </div>
+        <div className="note">
+          {Number(nowYm.slice(5))}月まで {formatYen(yearTotal.sofar)}
+          {yearTotal.forecast > 0 && <> ・ 残りの見込み {formatYen(yearTotal.forecast)}</>}
         </div>
         <div className="note">
           {active.length}件がオン
