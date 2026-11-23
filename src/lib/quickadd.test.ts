@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessShopCategory, isPayLink, matchPayment, parseAmount, parsePayParams } from './quickadd';
+import { guessShopCategory, isPayLink, matchPayment, parseAmount, parsePayParams, parsePayText } from './quickadd';
 import type { Expense } from '../types';
 
 const CATS = ['外食', '食費', '日用品', '交通', '衣服・美容', 'その他'];
@@ -50,5 +50,13 @@ describe('ショートカットからの支払い', () => {
       { id: '2', date: '2026-11-01', amount: 500, category: '外食', memo: 'ローソン' },
     ];
     expect(guessShopCategory('ローソン', past, CATS)).toBe('外食');
+  });
+});
+
+describe('parsePayText (受け取り箱)', () => {
+  it('3行から金額・お店・カードを読む', () => {
+    expect(parsePayText('¥872\nJOYFULL MOBARA\nエポスカード')).toEqual({ amount: 872, shop: 'JOYFULL MOBARA', card: 'エポスカード' });
+    expect(parsePayText('¥0\n\nSuica')).toEqual({ amount: undefined, shop: undefined, card: 'Suica' });
+    expect(parsePayText('')).toEqual({ amount: undefined, shop: undefined, card: undefined });
   });
 });

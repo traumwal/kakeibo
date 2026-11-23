@@ -5,6 +5,7 @@ import { loadData, saveData } from '../lib/storage';
 import { supabase } from '../lib/supabase';
 import { loadMeta, saveMeta, syncOnce } from '../lib/sync';
 import { deepEqual, merge3 } from '../lib/merge';
+import { deleteInbox, fetchInbox, type InboxItem } from '../lib/inbox';
 
 export type SyncStatus = 'disabled' | 'signedOut' | 'syncing' | 'synced' | 'offline' | 'error';
 
@@ -15,6 +16,10 @@ export interface Cloud {
   error: string | null;
   syncNow: () => void;
   signOut: () => Promise<void>;
+  /** ショートカットから受け取り箱に届いた、まだ記録していない支払い */
+  inbox: InboxItem[];
+  /** 記録した・いらない支払いを受け取り箱から消す */
+  removeInbox: (id: number) => void;
 }
 
 interface Store {
@@ -38,6 +43,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SyncStatus>(supabase ? 'signedOut' : 'disabled');
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [syncErr, setSyncErr] = useState<string | null>(null);
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
 
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -81,6 +87,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setLastSyncedAt(new Date());
       setSyncErr(null);
       setStatus('synced');
+      // 受け取り箱も見る (SQL をまだ実行していないときなどは、何もしない)
+      fetchInbox(supabase).then(setInbox, () => {});
     } catch (e) {
       setSyncErr((e as Error).message);
       setStatus(navigator.onLine ? 'error' : 'offline');
@@ -131,8 +139,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!supabase) return;
     await supabase.auth.signOut();
     saveMeta(null); // 手元のデータは残す
+    setInbox([]);
     setLastSyncedAt(null);
     setSyncErr(null);
+  }, []);
+
+  const removeInbox = useCallback((id: number) => {
+    setInbox((cur) => cur.filter((x) => x.inboxId !== id));
+    // 消せなかったら次の同期のときにまた出てくる
+    if (supabase) deleteInbox(supabase, id).catch(() => {});
   }, []);
 
   const cloud = useMemo<Cloud>(
@@ -143,8 +158,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       error: syncErr,
       syncNow: () => void runSync(),
       signOut,
+      inbox,
+      removeInbox,
     }),
-    [status, session, lastSyncedAt, syncErr, runSync, signOut],
+    [status, session, lastSyncedAt, syncErr, runSync, signOut, inbox, removeInbox],
   );
 
   const update = useCallback((fn: (d: AppData) => AppData) => setData((d) => fn(d)), []);

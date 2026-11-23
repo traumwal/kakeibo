@@ -61,7 +61,7 @@ export default function App() {
       {notice && <div className="toast" role="status" onClick={() => setNotice(null)}>{notice}</div>}
       {saveError && <div className="banner">データを保存できませんでした(プライベートブラウズや容量不足の可能性があります)</div>}
       <main>
-        {tab === 'home' && <Dashboard go={setTab} onAdd={openForm} />}
+        {tab === 'home' && <Dashboard go={setTab} onAdd={openForm} onOpenPay={(d) => { setDraft(d); setTab('expenses'); window.scrollTo(0, 0); }} />}
         {tab === 'subs' && <Subscriptions />}
         {tab === 'expenses' && <Expenses draft={draft} clearDraft={() => setDraft(null)} formRequested={formRequested} clearFormRequest={() => setFormRequested(false)} goSettings={() => { setTab('settings'); window.scrollTo(0, 0); }} />}
         {tab === 'friends' && <Friends />}
