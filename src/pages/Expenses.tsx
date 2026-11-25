@@ -34,7 +34,7 @@ export function Expenses({ goSettings, draft, clearDraft, formRequested, clearFo
   formRequested?: boolean;
   clearFormRequest?: () => void;
 }) {
-  const { data, update } = useStore();
+  const { data, update, cloud } = useStore();
   const [period, actions] = usePeriod();
   const [editing, setEditingState] = useState<Expense | 'new' | null>(draft || formRequested ? 'new' : null);
   // ホームの「+」や、アプリを開いたときの合図で記録画面を開く (別の記録を編集中なら邪魔しない)。合図は一度で消す
@@ -77,6 +77,8 @@ export function Expenses({ goSettings, draft, clearDraft, formRequested, clearFo
       expenses: d.expenses.some((x) => x.id === e.id) ? d.expenses.map((x) => (x.id === e.id ? e : x)) : [...d.expenses, e],
     }));
     if (!isYear) actions.setYm(ymOf(e.date));
+    // 受け取り箱から開いた支払いなら、記録したので受け取り箱から消す
+    if (editing === 'new' && draft?.inboxId != null) cloud.removeInbox(draft.inboxId);
     setEditing(null);
   };
 
@@ -189,6 +191,7 @@ export function Expenses({ goSettings, draft, clearDraft, formRequested, clearFo
           initial={editing === 'new' ? undefined : editing}
           draft={editing === 'new' && draft ? {
             amount: draft.amount,
+            date: draft.date,
             memo: draft.shop,
             payment: matchPayment(draft.card, data.settings.paymentMethods),
             category: guessShopCategory(draft.shop, data.expenses, data.settings.categories),
@@ -365,7 +368,7 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
   const standalone = (navigator as { standalone?: boolean }).standalone || matchMedia('(display-mode: standalone)').matches;
   const unsynced = !standalone && (cloud.status === 'signedOut' || cloud.status === 'disabled');
   const initMode: PayMode = initial?.settlements?.[0]?.type ?? 'self';
-  const [date, setDate] = useState(initial?.date ?? today());
+  const [date, setDate] = useState(initial?.date ?? draft?.date ?? today());
   const [category, setCategory] = useState(initial?.category ?? draft?.category ?? categories[0] ?? 'その他');
   const [memo, setMemo] = useState(initial?.memo ?? draft?.memo ?? '');
   const [payment, setPayment] = useState(initial ? initial.payment ?? '' : draft?.payment ?? (defaultPayment && payments.includes(defaultPayment) ? defaultPayment : ''));

@@ -277,6 +277,8 @@ legend { font-size: 0.85rem; color: var(--muted); padding: 0 4px; }
 .fx-form { margin-top: 12px; }
 .steps { margin: 8px 0; padding-left: 1.4em; font-size: 0.85rem; display: grid; gap: 4px; }
 .shortcut-url { margin-top: 8px; gap: 8px; }
+.shortcut-label { font-size: 0.8rem; color: var(--muted); white-space: nowrap; min-width: 3.5em; }
+.steps code { font-size: 0.8rem; background: var(--grid); border-radius: 4px; padding: 0 4px; }
 .shortcut-url code { font-size: 0.8rem; background: var(--grid); border-radius: 6px; padding: 6px 8px; }
 .note.over { color: var(--danger); }
 .toast { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 12px); z-index: 50; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; text-align: center; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }

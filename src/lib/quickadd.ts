@@ -6,6 +6,10 @@ export interface PayDraft {
   amount?: number;
   shop?: string;
   card?: string;
+  /** 払った日 (受け取り箱から開いたとき。なければ今日) */
+  date?: string;
+  /** 受け取り箱の id (保存したら受け取り箱から消す) */
+  inboxId?: number;
 }
 
 /** 「¥1,200」「1,200円」「JPY 1200.00」などから円の額を取り出す */
@@ -31,13 +35,21 @@ export const isPayLink = (search: string) => {
 export function parsePayParams(search: string): PayDraft | null {
   const q = new URLSearchParams(search);
   if (!q.has('pay') && !q.has('amount')) return null;
-  const lines = (q.get('pay') ?? '').split(/\r?\n/).map((s) => s.trim());
+  const lines = splitPay(q.get('pay') ?? '');
   const draft: PayDraft = {
     amount: parseAmount(q.get('amount') ?? lines[0]),
     shop: (q.get('shop') ?? lines[1] ?? '').trim() || undefined,
     card: (q.get('card') ?? lines[2] ?? '').trim() || undefined,
   };
   return draft.amount || draft.shop ? draft : null;
+}
+
+const splitPay = (text: string) => text.split(/\r?\n/).map((s) => s.trim());
+
+/** 「金額\n加盟店\nカード」の3行 (受け取り箱に届いたもの) を読む */
+export function parsePayText(text: string): PayDraft {
+  const [amount, shop, card] = splitPay(text);
+  return { amount: parseAmount(amount), shop: shop || undefined, card: card || undefined };
 }
 
 /** カードのブランド・会社名 (ウォレットのカード名と、支払い方法の名前のどちらにも出てきそうな語) */

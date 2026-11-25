@@ -10,6 +10,8 @@ import { cardRate, fetchRates, isUsd } from '../lib/fx';
 import { CloudSync } from '../components/CloudSync';
 import { Switch } from '../components/Switch';
 import { loadOpenOnLaunch, saveOpenOnLaunch } from '../lib/launch';
+import { supabase, supabaseAnonKey, supabaseUrl } from '../lib/supabase';
+import { getPayToken } from '../lib/inbox';
 
 export function Settings() {
   const { data, update, replace } = useStore();
@@ -351,42 +353,132 @@ function LaunchSection() {
   );
 }
 
-/** iPhone のショートカットで、Apple Pay で払ったときに記録画面を開く設定の手順 */
-function ShortcutSection() {
-  const base = new URL(import.meta.env.BASE_URL, location.origin).href;
-  const url = `${base}?pay=`;
-  const sample = url + encodeURIComponent('¥1,200\nスターバックス\nJCB');
+/** 値を表示してコピーできる1行 */
+function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      prompt('このアドレスをコピーしてください', url);
+      prompt('これをコピーしてください', value);
     }
   };
   return (
+    <div className="row shortcut-url">
+      <span className="shortcut-label">{label}</span>
+      <code className="grow ellipsis">{value}</code>
+      <button type="button" className="btn small" onClick={copy}>{copied ? 'コピーしました' : 'コピー'}</button>
+    </div>
+  );
+}
+
+/** iPhone のショートカットで、Apple Pay で払ったときに記録する設定の手順 */
+function ShortcutSection() {
+  const { cloud } = useStore();
+  const [token, setToken] = useState<string | null>(null);
+  const [tokenErr, setTokenErr] = useState<string | null>(null);
+  const [test, setTest] = useState<string | null>(null);
+  const signedIn = !!supabase && !!cloud.email;
+
+  useEffect(() => {
+    if (!supabase || !cloud.email) {
+      setToken(null);
+      return;
+    }
+    getPayToken(supabase).then(
+      (t) => { setToken(t); setTokenErr(null); },
+      () => setTokenErr('合言葉を作れませんでした。Supabase の SQL Editor で supabase/schema.sql の「受け取り箱」の部分をまだ実行していなければ、実行してください'),
+    );
+  }, [cloud.email]);
+
+  const renew = async () => {
+    if (!supabase || !confirm('合言葉を作り直しますか?(今のショートカットの合言葉は使えなくなるので、入れ直してください)')) return;
+    try {
+      setToken(await getPayToken(supabase, true));
+    } catch {
+      setTokenErr('作り直せませんでした');
+    }
+  };
+
+  const endpoint = supabaseUrl ? `${supabaseUrl.replace(/\/$/, '')}/rest/v1/rpc/kakeibo_pay` : '';
+  /** ショートカットと同じ送り方で、受け取り箱に送ってみる */
+  const sendTest = async () => {
+    if (!token || !supabaseAnonKey) return;
+    setTest('送信中…');
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { apikey: supabaseAnonKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, pay: '¥1,200\nスターバックス(テスト)\nJCB' }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      cloud.syncNow();
+      setTest('送りました。ホームに「Apple Pay の支払い」として出ます(× で消せます)');
+    } catch {
+      setTest('送れませんでした。SQL を実行したか確かめてください');
+    }
+  };
+
+  return (
     <section className="card">
       <h2>iPhone で支払いと同時に記録</h2>
-      <p className="note">Apple Pay(ウォレットのカード)で払うと、金額・お店・カードが入った記録画面が開くようにできます。iPhone の「ショートカット」アプリで一度だけ設定します</p>
+      <p className="note">
+        Apple Pay(ウォレットのカード)で払うと、金額・お店・カードがこのアプリに届くようにできます。iPhone の「ショートカット」アプリで一度だけ設定します。
+        ロック中に払っても届き、次にアプリを開くとホームに並ぶので、タップして分類を確かめて保存します
+      </p>
+      {!supabase && <p className="note over">このビルドではクラウド同期が使えないため、この方法は使えません(下の「Safari で開く方法」を使ってください)</p>}
+      {supabase && !signedIn && <p className="note over">上の「クラウド同期」にログインすると、ショートカット用の合言葉がここに出ます</p>}
+      {signedIn && (
+        <>
+          <ol className="steps">
+            <li>ショートカットアプリの「オートメーション」で「+」→「ウォレット」を選ぶ</li>
+            <li>使うカード(JCB・エポスなど)を選び、「すぐに実行」にして次へ →「新規の空のオートメーション」。Suica・PASMO は選ばないでください(改札を通るたびに動いてしまいます)</li>
+            <li>アクション「テキスト」を追加し、3行で「金額」「加盟店」「カード」を入れる(それぞれ「ショートカットの入力」の項目を変数として選ぶ)</li>
+            <li>アクション「URLの内容を取得」を追加し、URL に下の「送り先」を貼る</li>
+            <li>その「URLの内容を取得」の「&gt;」を開いて、方法を「POST」にする</li>
+            <li>「ヘッダ」で「新規ヘッダを追加」→ キーに <code>apikey</code>、値に下の「キー」を貼る</li>
+            <li>「本文を要求」を「JSON」にして、「新規フィールドを追加」→「テキスト」を2つ作る。1つ目はキー <code>token</code>・値に下の「合言葉」、2つ目はキー <code>pay</code>・値に手順3の「テキスト」を変数として入れる</li>
+            <li>前に作ったオートメーションに「URLエンコード」「URLを開く」があれば消す(ロック中は Safari を開けないため、エラーになります)</li>
+          </ol>
+          {tokenErr && <p className="error">{tokenErr}</p>}
+          {endpoint && <CopyRow label="送り先" value={endpoint} />}
+          {supabaseAnonKey && <CopyRow label="キー" value={supabaseAnonKey} />}
+          {token && <CopyRow label="合言葉" value={token} />}
+          <div className="actions">
+            <button type="button" className="btn" disabled={!token} onClick={sendTest}>試しに送る</button>
+            <button type="button" className="btn" disabled={!token} onClick={renew}>合言葉を作り直す</button>
+          </div>
+          {test && <p className="note">{test}</p>}
+          <p className="note">
+            合言葉を知っている人は、あなたの受け取り箱に支払いを送れます(データを見ることはできません)。人に見せてしまったら作り直してください。
+            カードは名前に「JCB」「エポス」などが入っていれば、上の支払い方法に自動で合わせます。分類は、同じお店で前に選んだものを使います。0円の支払いは記録しません
+          </p>
+        </>
+      )}
+      <LegacyShortcut />
+    </section>
+  );
+}
+
+/** 前のやり方: Safari で記録画面を開く (ロックを解除しているときだけ動く) */
+function LegacyShortcut() {
+  const base = new URL(import.meta.env.BASE_URL, location.origin).href;
+  const url = `${base}?pay=`;
+  const sample = url + encodeURIComponent('¥1,200\nスターバックス\nJCB');
+  return (
+    <details className="rules">
+      <summary>Safari で開く方法(ロックを解除しているときだけ)</summary>
+      <p className="note">クラウド同期を使わない場合の方法です。iPhone がロックされたまま払うと、iOS が Safari を開かせないため「オートメーションの実行に問題がありました」になります</p>
       <ol className="steps">
-        <li>ショートカットアプリの「オートメーション」で「+」→「ウォレット」を選ぶ</li>
-        <li>使うカード(JCB・エポスなど)を選び、「すぐに実行」にして次へ →「新規の空のオートメーション」。Suica・PASMO は選ばないでください(改札を通るたびに動いてしまいます。Suica はチャージした分を交通費として記録するのがおすすめです)</li>
-        <li>アクション「テキスト」を追加し、3行で「金額」「加盟店」「カード」を入れる(それぞれ「ショートカットの入力」の項目を変数として選ぶ)</li>
+        <li>上の手順1〜3と同じ</li>
         <li>アクション「URLエンコード」を追加する(入力は上のテキスト)</li>
         <li>アクション「URLを開く」を追加し、下のアドレスを貼って、そのすぐ後ろに「URLエンコードされたテキスト」を変数として入れる</li>
       </ol>
-      <div className="row shortcut-url">
-        <code className="grow ellipsis">{url}</code>
-        <button type="button" className="btn small" onClick={copy}>{copied ? 'コピーしました' : 'コピー'}</button>
-      </div>
-      <p className="note">
-        <a href={sample}>試しに開く</a>(1,200円・スターバックス・JCB で記録画面が開きます)。
-        カードは名前に「JCB」「エポス」などが入っていれば、上の支払い方法に自動で合わせます。分類は、同じお店で前に選んだものを使います
-      </p>
-      <p className="note">ホーム画面に追加したアプリと Safari では、データが別々に保存されます。ショートカットは Safari で開くので、両方で「クラウド同期」にログインしておくと、記録がアプリにも届きます</p>
-    </section>
+      <CopyRow label="アドレス" value={url} />
+      <p className="note"><a href={sample}>試しに開く</a>(1,200円・スターバックス・JCB で記録画面が開きます)。ホーム画面のアプリと Safari ではデータが別々なので、両方でクラウド同期にログインしておくと記録がアプリにも届きます</p>
+    </details>
   );
 }
 

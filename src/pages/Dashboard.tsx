@@ -8,11 +8,15 @@ import type { Tab } from '../App';
 import { upcomingWithdrawals } from '../lib/card';
 import { isUsd, yenCharge } from '../lib/fx';
 import { billingDatesUntil } from '../lib/calc';
+import type { PayDraft } from '../lib/quickadd';
 
 const isOnNow = (s: { endDate?: string }) => !s.endDate || s.endDate > today();
 
-export function Dashboard({ go, onAdd }: { go: (t: Tab) => void; onAdd: () => void }) {
-  const { data } = useStore();
+const hm = (d: Date) => d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+export function Dashboard({ go, onAdd, onOpenPay }: { go: (t: Tab) => void; onAdd: () => void; onOpenPay: (d: PayDraft) => void }) {
+  const { data, cloud } = useStore();
+  const inbox = cloud.inbox;
   const [period, actions] = usePeriod();
   const nowYm = ymOf(today());
   const target = data.settings.monthlyTarget;
@@ -41,6 +45,32 @@ export function Dashboard({ go, onAdd }: { go: (t: Tab) => void; onAdd: () => vo
   return (
     <div className="page">
       <PeriodNav period={period} actions={actions} />
+
+      {inbox.length > 0 && (
+        <section className="card">
+          <h2>Apple Pay の支払い(未記録 {inbox.length}件)</h2>
+          <ul className="list">
+            {inbox.map((p) => (
+              <li key={p.inboxId} className="row clickable" onClick={() => onOpenPay(p)}>
+                <span className="grow">
+                  <b>{p.shop ?? 'お店の名前なし'}</b>
+                  <span className="sub-sub">{hm(p.at)}{p.card && ` · ${p.card}`}</span>
+                </span>
+                <b className="num">{formatYen(p.amount ?? 0)}</b>
+                <button
+                  className="icon-btn"
+                  aria-label="記録しないで消す"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm('この支払いを記録しないで消しますか?')) cloud.removeInbox(p.inboxId);
+                  }}
+                >×</button>
+              </li>
+            ))}
+          </ul>
+          <p className="note">タップすると入力済みの記録画面が開きます。保存すると、ここから消えます</p>
+        </section>
+      )}
 
       <section className="card hero">
         <div className="label">{isMonth ? '今月の支出合計' : `${period.year}年の支出合計`}</div>
