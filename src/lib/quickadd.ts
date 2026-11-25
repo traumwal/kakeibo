@@ -52,6 +52,15 @@ export function parsePayText(text: string): PayDraft {
   return { amount: parseAmount(amount), shop: shop || undefined, card: card || undefined };
 }
 
+/**
+ * はっきり0円の支払い (定期の区間内で改札を通ったときなど) か。
+ * 金額が空のもの (QUICPay・iD は払った瞬間にはまだ金額が届かない) は0円とは見なさない
+ */
+export function isZeroPay(text: string): boolean {
+  const amount = splitPay(text)[0] ?? '';
+  return /\d/.test(amount.normalize('NFKC')) && !parseAmount(amount);
+}
+
 /** カードのブランド・会社名 (ウォレットのカード名と、支払い方法の名前のどちらにも出てきそうな語) */
 const CARD_WORDS = [['jcb'], ['epos', 'エポス'], ['visa'], ['master', 'マスター'], ['amex', 'アメックス', 'americanexpress'], ['楽天', 'rakuten'], ['三井住友', 'smbc'], ['dカード', 'dcard'], ['paypay'], ['イオン', 'aeon'], ['セゾン', 'saison'], ['ビュー', 'view']];
 

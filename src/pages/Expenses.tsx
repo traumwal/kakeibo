@@ -436,10 +436,11 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
   return (
     <Modal title={initial ? '記録を編集' : '支出を記録'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
-        {draft && <p className="note">Apple Pay の支払いから入力しました。メモにはお店の名前が入っています。下の「よく使うメモ」のボタンか手入力で、使ったもの(漫画・ランチなど)に置き換えられます。分類を確かめて保存してください</p>}
+        {draft && !draft.amount && <p className="note over">払ったときに金額が届いていなかったので(QUICPay・iD など)、金額を入れてください</p>}
+        {draft && <p className="note">Apple Pay の支払いから入力しました。{draft.memo && 'メモにはお店の名前が入っています。'}下の「よく使うメモ」のボタンか手入力で、使ったもの(漫画・ランチなど)に置き換えられます。分類を確かめて保存してください</p>}
         {draft && unsynced && <p className="note over">Safari で開いています。ホーム画面のアプリとはデータが別なので、設定の「クラウド同期」にログインしておくと、ここで保存した記録がアプリにも届きます</p>}
         <label>金額(円){mode === 'iPaid' && '・自分の分'}
-          <input ref={amountRef} required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft} onChange={(e) => setMine(e.target.value)} />
+          <input ref={amountRef} required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft?.amount} onChange={(e) => setMine(e.target.value)} />
         </label>
         {shops.length > 0 && (
           <div className="field">
