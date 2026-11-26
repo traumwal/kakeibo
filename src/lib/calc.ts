@@ -9,7 +9,7 @@ export const VARIABLE_LABEL = '日々の支出';
 /** 支払い方法が未設定の記録 */
 export const NO_PAYMENT_LABEL = '未設定';
 
-type CalcData = Pick<AppData, 'subscriptions' | 'expenses' | 'settings'>;
+type CalcData = Pick<AppData, 'subscriptions' | 'expenses' | 'settings'> & Partial<Pick<AppData, 'repayments'>>;
 
 const NO_FX: FxSettings = { rates: {}, manualRate: 150, feePercent: 0 };
 
@@ -193,6 +193,85 @@ export function expensesInMonths(expenses: Expense[], yms: string[]): Expense[] 
   return expenses.filter((e) => set.has(ymOf(e.date)));
 }
 
+/** 支出として数える1件 (記録した日の分、または友達に返した日の分) */
+export interface CountedExpense {
+  date: string;
+  amount: number;
+  expense: Expense;
+  /** 友達が立て替えてくれた分を、返した (または貸しと相殺した) 日に数えたもの */
+  repaid?: boolean;
+}
+
+/** 友達が立て替えてくれた自分の分 (返すまでは支出に数えない) */
+export const borrowedOf = (e: Expense) =>
+  Math.min(e.amount, (e.settlements ?? []).filter((s) => s.type === 'friendPaid').reduce((a, s) => a + s.amount, 0));
+
+/**
+ * 支出として数える額を日付つきで出す。
+ * 友達が立て替えてくれた自分の分は、記録した日ではなく、返した日 (返済の記録) に数える。
+ * 返すかわりに、その友達の分を自分が立て替えて相殺したときは、その立て替えの日に数える。
+ * 返した額は、古い借りから順に充てる (分類はその借りの記録のもの)
+ */
+export function countedExpenses(expenses: Expense[], repayments: Repayment[] = []): CountedExpense[] {
+  const out: CountedExpense[] = [];
+  type Ev = { date: string; order: number; kind: 'borrow' | 'lend' | 'paidBack' | 'receivedBack'; amount: number; expense?: Expense };
+  const byFriend = new Map<string, Ev[]>();
+  const add = (friendId: string, ev: Ev) => byFriend.set(friendId, [...(byFriend.get(friendId) ?? []), ev]);
+  for (const e of expenses) {
+    const own = e.amount - borrowedOf(e);
+    if (own > 0) out.push({ date: e.date, amount: own, expense: e });
+    let left = borrowedOf(e);
+    for (const st of e.settlements ?? []) {
+      if (st.type === 'iPaid') add(st.friendId, { date: e.date, order: 0, kind: 'lend', amount: st.amount });
+      else {
+        const a = Math.min(st.amount, left);
+        left -= a;
+        if (a > 0) add(st.friendId, { date: e.date, order: 0, kind: 'borrow', amount: a, expense: e });
+      }
+    }
+  }
+  for (const r of repayments) add(r.friendId, { date: r.date, order: 1, kind: r.direction, amount: r.amount });
+
+  for (const evs of byFriend.values()) {
+    evs.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
+    const queue: { expense: Expense; left: number }[] = [];
+    let lent = 0; // 友達に貸していて、まだ返してもらっていない額
+    /** 借りの古いものから amount だけ返したことにする。残りを返す */
+    const payOff = (amount: number, date: string) => {
+      let rem = amount;
+      while (rem > 0 && queue.length) {
+        const q = queue[0];
+        const a = Math.min(rem, q.left);
+        out.push({ date, amount: a, expense: q.expense, repaid: true });
+        q.left -= a;
+        rem -= a;
+        if (q.left <= 0) queue.shift();
+      }
+      return rem;
+    };
+    for (const ev of evs) {
+      if (ev.kind === 'borrow') {
+        const off = Math.min(lent, ev.amount);
+        if (off > 0) out.push({ date: ev.date, amount: off, expense: ev.expense!, repaid: true });
+        lent -= off;
+        if (ev.amount - off > 0) queue.push({ expense: ev.expense!, left: ev.amount - off });
+      } else if (ev.kind === 'lend' || ev.kind === 'paidBack') {
+        // 返しすぎた分は、友達への貸しになる
+        lent += payOff(ev.amount, ev.date);
+      } else {
+        lent = Math.max(0, lent - ev.amount);
+      }
+    }
+  }
+  return out;
+}
+
+/** 期間内に支出として数える分 */
+export function countedInMonths(data: Pick<CalcData, 'expenses' | 'repayments'>, yms: string[]): CountedExpense[] {
+  const set = new Set(yms);
+  return countedExpenses(data.expenses, data.repayments).filter((c) => set.has(ymOf(c.date)));
+}
+
 /** その年の集計対象の月。今年は今月まで (先の月のサブスクを見込みで足さない)、来年以降は空 */
 export function monthsOfYear(year: number, todayYm: string): string[] {
   const all = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
@@ -224,7 +303,7 @@ export interface MonthSummary {
 
 export function monthSummary(data: CalcData, ym: string): MonthSummary {
   const subscriptions = subscriptionTotalForMonth(data.subscriptions, ym, data.settings);
-  const expenses = expensesInMonth(data.expenses, ym).reduce((s, e) => s + e.amount, 0);
+  const expenses = countedInMonths(data, [ym]).reduce((s, e) => s + e.amount, 0);
   return { ym, subscriptions, expenses, total: subscriptions + expenses };
 }
 
@@ -340,7 +419,7 @@ export function sortSubscriptions(subs: Subscription[], todayStr: string, fx: Fx
 
 /** 明細1行。サブスクは1ヶ月ならその月の請求日 (請求がなければ null = 月割り分)、複数月なら null で count に回数 */
 export type LedgerItem =
-  | { kind: 'expense'; date: string; amount: number; expense: Expense }
+  | { kind: 'expense'; date: string; amount: number; expense: Expense; repaid?: boolean }
   | { kind: 'sub'; date: string | null; amount: number; sub: Subscription; count: number; estimate?: boolean };
 
 export interface CategoryGroup extends CategoryTotal {
@@ -389,7 +468,7 @@ export function categoryBreakdown(data: CalcData, yms: string | string[]): Categ
   const months = toList(yms);
   const map = new Map<string, LedgerItem[]>();
   const push = (cat: string, item: LedgerItem) => map.set(cat, [...(map.get(cat) ?? []), item]);
-  for (const e of expensesInMonths(data.expenses, months)) push(e.category, { kind: 'expense', date: e.date, amount: e.amount, expense: e });
+  for (const c of countedInMonths(data, months)) push(c.expense.category, { kind: 'expense', ...c });
   for (const item of subItems(data, months)) push(item.kind === 'sub' ? subGroupOf(item.sub) : SUBSCRIPTION_LABEL, item);
   const budgets = data.settings.budgets;
   return toGroups(map, (c) => (budgets[c] != null ? budgets[c] * months.length : undefined));
@@ -403,7 +482,7 @@ export function paymentBreakdown(data: CalcData, yms: string | string[]): Catego
     const k = key || NO_PAYMENT_LABEL;
     map.set(k, [...(map.get(k) ?? []), item]);
   };
-  for (const e of expensesInMonths(data.expenses, months)) push(e.payment, { kind: 'expense', date: e.date, amount: e.amount, expense: e });
+  for (const c of countedInMonths(data, months)) push(c.expense.payment, { kind: 'expense', ...c });
   for (const item of subItems(data, months)) push(item.kind === 'sub' ? item.sub.payment : undefined, item);
   const groups = toGroups(map, () => undefined);
   return [...groups.filter((g) => g.category !== NO_PAYMENT_LABEL), ...groups.filter((g) => g.category === NO_PAYMENT_LABEL)];

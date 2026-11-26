@@ -90,6 +90,7 @@ export function Dashboard({ go, onAdd, onOpenPay }: { go: (t: Tab) => void; onAd
             </div>
           </div>
         )}
+        {owe > 0 && <div className="note">友達に立て替えてもらっている {formatYen(owe)} は、返したときに計上します</div>}
         <div className="split">
           <div><span className="dot c1" />{SUBSCRIPTION_LABEL} <b className="num">{formatYen(cur.subscriptions)}</b></div>
           <div><span className="dot c2" />{VARIABLE_LABEL} <b className="num">{formatYen(cur.expenses)}</b></div>

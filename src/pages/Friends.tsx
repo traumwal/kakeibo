@@ -36,7 +36,7 @@ export function Friends() {
             <div className="big num lent">{formatYen(lent)}</div>
           </div>
         </div>
-        <p className="note">立て替えてもらった分は早めに返して、「隠れた出費」がたまらないようにしましょう</p>
+        <p className="note">立て替えてもらった分は、返済を記録した月の支出に入ります。早めに返して、「隠れた出費」がたまらないようにしましょう</p>
       </section>
 
       <ul className="card list">
