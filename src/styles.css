@@ -283,3 +283,9 @@ legend { font-size: 0.85rem; color: var(--muted); padding: 0 4px; }
 .note.over { color: var(--danger); }
 .toast { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 12px); z-index: 50; background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; text-align: center; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }
 .shift-btn { margin-top: 14px; }
+.picker-search { width: 100%; margin-bottom: 10px; }
+.picker-custom { width: 100%; margin-bottom: 4px; }
+.picker-back { margin-bottom: 4px; }
+.card.list.picker-list { padding: 4px 6px; }
+.picker-list > li { padding: 0; }
+.picker-list .sub-row { padding: 10px; }

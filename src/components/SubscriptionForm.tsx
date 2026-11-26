@@ -7,9 +7,12 @@ import { guessCategory, subCategoryLabel, subCategoryOptions, UNCLASSIFIED_SUB }
 import type { Subscription } from '../types';
 import { Modal } from './Modal';
 import { SubIcon } from './SubIcon';
+import type { SubPreset } from './SubscriptionPicker';
 
-export function SubscriptionForm({ initial, categories, payments, onSave, onClose, onDelete }: {
+export function SubscriptionForm({ initial, preset, categories, payments, onSave, onClose, onDelete }: {
   initial?: Subscription;
+  /** 一覧から選んだサービス (新しく追加するとき、最初から入れておく値) */
+  preset?: SubPreset;
   categories: string[];
   payments: string[];
   onSave: (s: Subscription) => void;
@@ -21,21 +24,21 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
   const shifts = [...(initial?.shifts ?? [])].sort((a, b) => a.to.localeCompare(b.to));
   const firstPay0 = initial ? firstPayDate(initial) : t;
   const [f, setF] = useState({
-    name: initial?.name ?? '',
-    domain: initial?.domain ?? '',
-    amount: initial ? String(initial.amount) : '',
-    currency: initial?.currency ?? 'JPY',
-    cycle: initial?.cycle ?? 'monthly',
+    name: initial?.name ?? preset?.name ?? '',
+    domain: initial?.domain ?? preset?.domain ?? '',
+    amount: initial ? String(initial.amount) : preset?.amount != null ? String(preset.amount) : '',
+    currency: initial?.currency ?? preset?.currency ?? 'JPY',
+    cycle: initial?.cycle ?? preset?.cycle ?? 'monthly',
     firstPay: firstPay0,
     // 分類を選んでいない以前のサブスクは、名前から推測した分類を最初から選んでおく
-    category: initial && initial.category !== UNCLASSIFIED_SUB ? initial.category : guessCategory(initial?.name ?? '') ?? UNCLASSIFIED_SUB,
+    category: initial && initial.category !== UNCLASSIFIED_SUB ? initial.category : preset?.category ?? guessCategory(initial?.name ?? '') ?? UNCLASSIFIED_SUB,
     payment: initial?.payment ?? '',
     memo: initial?.memo ?? '',
   });
   // 自動で入れたドメインは、名前を変えたら追従させる (手で入力したものは上書きしない)
-  const [autoDomain, setAutoDomain] = useState(!initial?.domain);
+  const [autoDomain, setAutoDomain] = useState(!initial?.domain && !preset?.domain);
   // 分類も、自分で選ぶまでは名前から推測する
-  const [autoCategory, setAutoCategory] = useState(!initial || initial.category === UNCLASSIFIED_SUB);
+  const [autoCategory, setAutoCategory] = useState(initial ? initial.category === UNCLASSIFIED_SUB : !preset);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
 
   const onName = (name: string) => {
@@ -132,7 +135,7 @@ export function SubscriptionForm({ initial, categories, payments, onSave, onClos
         <label>メモ<input value={f.memo} onChange={set('memo')} /></label>
         <div className="actions">
           {initial && <button type="button" className="btn danger" onClick={() => onDelete(initial.id)}>削除</button>}
-          <button type="submit" className="btn primary">保存</button>
+          <button type="submit" className="btn primary">{initial ? '保存' : '追加'}</button>
         </div>
       </form>
     </Modal>

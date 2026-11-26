@@ -7,6 +7,7 @@ import { formatYen } from '../lib/format';
 import type { Subscription, UsageLevel } from '../types';
 import { SubIcon } from '../components/SubIcon';
 import { SubscriptionForm } from '../components/SubscriptionForm';
+import { SubscriptionPicker, type SubPreset } from '../components/SubscriptionPicker';
 import { Switch } from '../components/Switch';
 import { SubscriptionDetail } from './SubscriptionDetail';
 import { effectiveSubCategory, subCategoryLabel, UNCLASSIFIED_SUB } from '../lib/categories';
@@ -18,6 +19,9 @@ export function Subscriptions() {
   const { data, update } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Subscription | 'new' | null>(null);
+  // 「+ 追加」で開くサービスの一覧と、そこで選んだプラン
+  const [picking, setPicking] = useState(false);
+  const [preset, setPreset] = useState<SubPreset | undefined>();
   const [swipedId, setSwipedId] = useState<string | null>(null);
   const t = today();
   const fx = data.settings.fx;
@@ -75,9 +79,21 @@ export function Subscriptions() {
   };
   const toggle = (s: Subscription) => patch(s.id, (x) => (isOn(x, t) ? turnOff(x, t) : turnOn(x, t)));
 
+  const startAdd = () => { setPreset(undefined); setPicking(true); };
+  const picker = picking && (
+    <SubscriptionPicker
+      registered={new Set(data.subscriptions.filter((s) => isOn(s, t)).flatMap((s) => (s.domain ? [s.domain] : [])))}
+      onPick={(p) => { setPreset(p); setPicking(false); setEditing('new'); }}
+      onCustom={() => { setPreset(undefined); setPicking(false); setEditing('new'); }}
+      onClose={() => setPicking(false)}
+    />
+  );
+
   const form = editing && (
     <SubscriptionForm
+      key={editing === 'new' ? `new:${preset?.name ?? ''}` : editing.id}
       initial={editing === 'new' ? undefined : editing}
+      preset={editing === 'new' ? preset : undefined}
       categories={data.settings.categories}
       payments={data.settings.paymentMethods}
       onClose={() => setEditing(null)}
@@ -159,7 +175,7 @@ export function Subscriptions() {
 
       <div className="toolbar">
         <h2>オン</h2>
-        <button className="btn primary" onClick={() => setEditing('new')}>+ 追加</button>
+        <button className="btn primary" onClick={startAdd}>+ 追加</button>
       </div>
       {active.length === 0 && <p className="empty">サブスクや家賃・通信費など、毎月かかるものを登録しましょう</p>}
       {active.length > 0 && !grouped && <ul className="card list sub-list">{active.map(row)}</ul>}
@@ -183,6 +199,7 @@ export function Subscriptions() {
         </>
       )}
       {data.subscriptions.length > 0 && <p className="note">左にスワイプ(パソコンは右クリック)で削除できます</p>}
+      {picker}
       {form}
     </div>
   );
