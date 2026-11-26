@@ -3,7 +3,7 @@ import {
   billingDateInMonth, categoryBreakdown, sortGroups, type LedgerItem, categoryTotals, friendBalances, isActiveInMonth, monthSummary, monthlyAmount, monthlyTrend,
   nextBillingDate, reviewCandidates, SUBSCRIPTION_LABEL, amountInMonth, turnOff, turnOn, isOn, markUsed, usesInLast, monthsOfYear, yearTrend,
   paymentBreakdown, NO_PAYMENT_LABEL, axisTicks, billingDatesInMonth, shiftBilling, undoLastShift, defaultShiftFrom, alignStartDate,
-  subscriptionYear,
+  subscriptionYear, countedExpenses,
 } from './calc';
 import { emptyData } from './storage';
 import type { Expense, Subscription } from '../types';
@@ -74,6 +74,51 @@ describe('友達との貸し借り', () => {
     const b = friendBalances(friends, expenses, repayments);
     expect(b.find((x) => x.friend.id === 'f1')!.balance).toBe(-1500); // 1500円借りている
     expect(b.find((x) => x.friend.id === 'f2')!.balance).toBe(0); // 精算済み
+  });
+});
+
+describe('友達が立て替えてくれた分は返したときに計上', () => {
+  const pb = (date: string, amount: number) => ({ id: date + amount, friendId: 'f1', date, amount, direction: 'paidBack' as const });
+  const lunch = exp({ id: 'lunch', date: '2026-10-20', amount: 1200, category: '外食', settlements: [{ friendId: 'f1', type: 'friendPaid', amount: 1200 }] });
+
+  it('借りている間は数えず、返した日に元の分類で数える', () => {
+    const data = { ...emptyData(), expenses: [lunch] };
+    expect(monthSummary(data, '2026-10').expenses).toBe(0);
+    const paid = { ...data, repayments: [pb('2026-11-03', 1200)] };
+    expect(monthSummary(paid, '2026-10').expenses).toBe(0);
+    expect(monthSummary(paid, '2026-11').expenses).toBe(1200);
+    const g = categoryBreakdown(paid, '2026-11').find((x) => x.category === '外食')!;
+    expect(g.items).toEqual([expect.objectContaining({ date: '2026-11-03', amount: 1200, repaid: true })]);
+  });
+
+  it('分けて返したら、古い借りから順に充てる', () => {
+    const coffee = exp({ id: 'coffee', date: '2026-10-25', amount: 500, category: 'カフェ', settlements: [{ friendId: 'f1', type: 'friendPaid', amount: 500 }] });
+    const c = countedExpenses([coffee, lunch], [pb('2026-11-01', 1000), pb('2026-12-01', 1000)]);
+    expect(c.map((x) => [x.expense.id, x.date, x.amount])).toEqual([
+      ['lunch', '2026-11-01', 1000],
+      ['lunch', '2026-12-01', 200],
+      ['coffee', '2026-12-01', 500],
+    ]);
+  });
+
+  it('自分がその友達の分を立て替えて相殺したら、その日に数える', () => {
+    const dinner = exp({ id: 'dinner', date: '2026-11-10', amount: 1500, total: 3000, settlements: [{ friendId: 'f1', type: 'iPaid', amount: 1500 }] });
+    const c = countedExpenses([lunch, dinner]);
+    expect(c.map((x) => [x.expense.id, x.date, x.amount])).toEqual([
+      ['dinner', '2026-11-10', 1500],
+      ['lunch', '2026-11-10', 1200],
+    ]);
+  });
+
+  it('先に貸していた分があれば、借りた日に相殺して数える', () => {
+    const dinner = exp({ id: 'dinner', date: '2026-10-01', amount: 1500, total: 3000, settlements: [{ friendId: 'f1', type: 'iPaid', amount: 1500 }] });
+    const c = countedExpenses([dinner, lunch]).filter((x) => x.expense.id === 'lunch');
+    expect(c).toEqual([expect.objectContaining({ date: '2026-10-20', amount: 1200, repaid: true })]);
+  });
+
+  it('自分が立て替えたときは、今まで通り自分の分だけ記録した日に数える', () => {
+    const dinner = exp({ date: '2026-11-10', amount: 1500, total: 3000, settlements: [{ friendId: 'f1', type: 'iPaid', amount: 1500 }] });
+    expect(monthSummary({ ...emptyData(), expenses: [dinner] }, '2026-11').expenses).toBe(1500);
   });
 });
 

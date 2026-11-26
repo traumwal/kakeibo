@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { toISODate } from './date';
-import { parsePayText, type PayDraft } from './quickadd';
+import { isZeroPay, parsePayText, type PayDraft } from './quickadd';
 
 /** ショートカットから受け取り箱に届いた支払い */
 export interface InboxItem extends PayDraft {
@@ -22,15 +22,16 @@ export function toInboxItem(row: Row): InboxItem {
 }
 
 /**
- * 受け取り箱を読む。金額がない・0円の支払い (定期の区間内で改札を通ったときなど) は記録しないので、ここで消す
+ * 受け取り箱を読む。0円の支払い (定期の区間内で改札を通ったときなど) は記録しないので、ここで消す。
+ * 金額が空のもの (QUICPay・iD は払った瞬間にはまだ金額が届かない) は残して、アプリで金額を入れてもらう
  */
 export async function fetchInbox(client: SupabaseClient): Promise<InboxItem[]> {
   const { data, error } = await client.from('kakeibo_inbox').select('id, pay, created_at').order('created_at');
   if (error) throw new Error(error.message);
-  const items = (data as Row[]).map(toInboxItem);
-  const empty = items.filter((x) => !x.amount).map((x) => x.inboxId);
-  if (empty.length) await client.from('kakeibo_inbox').delete().in('id', empty);
-  return items.filter((x) => x.amount);
+  const rows = data as Row[];
+  const zero = rows.filter((r) => isZeroPay(r.pay)).map((r) => Number(r.id));
+  if (zero.length) await client.from('kakeibo_inbox').delete().in('id', zero);
+  return rows.filter((r) => !isZeroPay(r.pay)).map(toInboxItem);
 }
 
 export async function deleteInbox(client: SupabaseClient, id: number): Promise<void> {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { categoryBreakdown, expensesInMonths, paymentBreakdown, sortGroups, NO_PAYMENT_LABEL, type CategoryGroup, type LedgerItem } from '../lib/calc';
+import { borrowedOf, categoryBreakdown, countedInMonths, expensesInMonths, paymentBreakdown, sortGroups, NO_PAYMENT_LABEL, type CategoryGroup, type LedgerItem } from '../lib/calc';
 import { today, ymOf } from '../lib/date';
 import { formatYen, uid } from '../lib/format';
 import type { Expense, Friend, Settlement } from '../types';
@@ -58,7 +58,10 @@ export function Expenses({ goSettings, draft, clearDraft, formRequested, clearFo
   const payGroups = paymentBreakdown(data, months);
   const periodTotal = groups.reduce((s, g) => s + g.amount, 0);
   const list = expensesInMonths(data.expenses, months).sort((a, b) => b.date.localeCompare(a.date));
-  const total = list.reduce((s, e) => s + e.amount, 0);
+  // 友達が立て替えてくれた分は返したときに数えるので、記録の合計ではなく数える額の合計
+  const counted = countedInMonths(data, months);
+  const total = counted.reduce((s, c) => s + c.amount, 0);
+  const repaidTotal = counted.filter((c) => c.repaid).reduce((s, c) => s + c.amount, 0);
   const friendName = (id: string) => data.friends.find((f) => f.id === id)?.name ?? '(削除済み)';
   const [payBasis, setPayBasisState] = useState<'use' | 'withdraw'>(loadBasis);
   const setPayBasis = (v: 'use' | 'withdraw') => {
@@ -161,7 +164,10 @@ export function Expenses({ goSettings, draft, clearDraft, formRequested, clearFo
       {view === 'date' && (
         <>
           <div className="toolbar">
-            <div>記録した支出 <b className="num">{formatYen(total)}</b>({list.length}件)</div>
+            <div>
+              記録した支出 <b className="num">{formatYen(total)}</b>({list.length}件)
+              {repaidTotal > 0 && <small className="muted"> 友達に返した立て替え {formatYen(repaidTotal)} を含む</small>}
+            </div>
             <button className="btn primary" onClick={() => setEditing('new')}>+ 記録する</button>
           </div>
           {list.length === 0 && <p className="empty">この期間の記録はまだありません</p>}
@@ -175,7 +181,7 @@ export function Expenses({ goSettings, draft, clearDraft, formRequested, clearFo
                       <span className="chip">{e.category}</span> {e.memo}
                       {e.payment && <small> · {e.payment}</small>}
                     </span>
-                    <b className="num">{formatYen(e.amount)}</b>
+                    <b className={borrowedOf(e) >= e.amount ? 'num muted' : 'num'}>{formatYen(e.amount)}</b>
                   </div>
                   <SettleLine expense={e} friendName={friendName} />
                 </li>
@@ -220,7 +226,7 @@ function SettleLine({ expense, friendName }: { expense: Expense; friendName: (id
     <div className="settle">
       {expense.settlements.map((s) => (
         <span key={s.friendId} className={s.type === 'friendPaid' ? 'owe' : 'lent'}>
-          {s.type === 'friendPaid' ? `${friendName(s.friendId)}が立て替え(借り ${formatYen(s.amount)})` : `${friendName(s.friendId)}に貸し ${formatYen(s.amount)}`}
+          {s.type === 'friendPaid' ? `${friendName(s.friendId)}が立て替え(借り ${formatYen(s.amount)}・返したときに計上)` : `${friendName(s.friendId)}に貸し ${formatYen(s.amount)}`}
         </span>
       ))}
     </div>
@@ -261,8 +267,8 @@ function CategoryCard({ group, share, onEdit, multi, defaultOpen, showCategory }
       )}
       {open && (
         <ul className="list cat-items">
-          {group.items.map((item) => (
-            <LedgerRow key={item.kind === 'sub' ? `s-${item.sub.id}` : item.expense.id} item={item} onEdit={onEdit} multi={multi} showCategory={showCategory} />
+          {group.items.map((item, i) => (
+            <LedgerRow key={item.kind === 'sub' ? `s-${item.sub.id}` : `${item.expense.id}-${i}`} item={item} onEdit={onEdit} multi={multi} showCategory={showCategory} />
           ))}
         </ul>
       )}
@@ -288,12 +294,14 @@ function LedgerRow({ item, onEdit, multi, showCategory }: { item: LedgerItem; on
   const e = item.expense;
   return (
     <li className="row clickable" onClick={() => onEdit(e)}>
-      <span className="date">{md(e.date)}</span>
+      <span className="date">{md(item.date)}</span>
       <span className="grow ellipsis">
         {showCategory && <span className="chip">{e.category}</span>} {e.memo || (showCategory ? '' : <span className="muted">(メモなし)</span>)}
-        {e.settlements?.length ? <small> {e.settlements[0].type === 'friendPaid' ? '立て替えてもらった' : '立て替えた'}</small> : null}
+        {item.repaid
+          ? <small> 返済分({md(e.date)}の立て替え)</small>
+          : e.settlements?.length ? <small> {e.settlements[0].type === 'friendPaid' ? '立て替えてもらった' : '立て替えた'}</small> : null}
       </span>
-      <span className="num">{formatYen(e.amount)}</span>
+      <span className="num">{formatYen(item.amount)}</span>
     </li>
   );
 }
@@ -436,10 +444,11 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
   return (
     <Modal title={initial ? '記録を編集' : '支出を記録'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
-        {draft && <p className="note">Apple Pay の支払いから入力しました。メモにはお店の名前が入っています。下の「よく使うメモ」のボタンか手入力で、使ったもの(漫画・ランチなど)に置き換えられます。分類を確かめて保存してください</p>}
+        {draft && !draft.amount && <p className="note over">払ったときに金額が届いていなかったので(QUICPay・iD など)、金額を入れてください</p>}
+        {draft && <p className="note">Apple Pay の支払いから入力しました。{draft.memo && 'メモにはお店の名前が入っています。'}下の「よく使うメモ」のボタンか手入力で、使ったもの(漫画・ランチなど)に置き換えられます。分類を確かめて保存してください</p>}
         {draft && unsynced && <p className="note over">Safari で開いています。ホーム画面のアプリとはデータが別なので、設定の「クラウド同期」にログインしておくと、ここで保存した記録がアプリにも届きます</p>}
         <label>金額(円){mode === 'iPaid' && '・自分の分'}
-          <input ref={amountRef} required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft} onChange={(e) => setMine(e.target.value)} />
+          <input ref={amountRef} required type="number" inputMode="numeric" min="0" value={mine} autoFocus={!initial && !draft?.amount} onChange={(e) => setMine(e.target.value)} />
         </label>
         {shops.length > 0 && (
           <div className="field">
@@ -497,7 +506,7 @@ function ExpenseForm({ initial, draft, categories, shops, payments, defaultPayme
             )}
             {mode !== 'self' && (
               <>
-                <p className="note">{mode === 'iPaid' ? '立て替えた相手(複数選べます)' : '払ってくれた友達'}</p>
+                <p className="note">{mode === 'iPaid' ? '立て替えた相手(複数選べます)' : '払ってくれた友達(自分の分は、友達に返したときに支出に計上します)'}</p>
                 <div className="chips">
                   {allFriends.map((f) => (
                     <button type="button" key={f.id} className={selected.includes(f.id) ? 'chip on' : 'chip'} onClick={() => toggle(f.id)}>{f.name}</button>

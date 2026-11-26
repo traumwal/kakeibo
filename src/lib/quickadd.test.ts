@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { guessShopCategory, isPayLink, matchPayment, parseAmount, parsePayParams, parsePayText } from './quickadd';
+import { guessShopCategory, isPayLink, matchPayment, parseAmount, isZeroPay, parsePayParams, parsePayText } from './quickadd';
 import type { Expense } from '../types';
 
 const CATS = ['外食', '食費', '日用品', '交通', '衣服・美容', 'その他'];
@@ -58,5 +58,15 @@ describe('parsePayText (受け取り箱)', () => {
     expect(parsePayText('¥872\nJOYFULL MOBARA\nエポスカード')).toEqual({ amount: 872, shop: 'JOYFULL MOBARA', card: 'エポスカード' });
     expect(parsePayText('¥0\n\nSuica')).toEqual({ amount: undefined, shop: undefined, card: 'Suica' });
     expect(parsePayText('')).toEqual({ amount: undefined, shop: undefined, card: undefined });
+  });
+});
+
+describe('isZeroPay', () => {
+  it('はっきり0円のものだけ0円と見なす (金額が空の QUICPay は残す)', () => {
+    expect(isZeroPay('¥0\n\nSuica')).toBe(true);
+    expect(isZeroPay('JPY 0.00\nJR\nエポス')).toBe(true);
+    expect(isZeroPay('\n\nエポスカード')).toBe(false);
+    expect(isZeroPay('')).toBe(false);
+    expect(isZeroPay('¥872\nJOYFULL\nエポス')).toBe(false);
   });
 });

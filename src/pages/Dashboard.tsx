@@ -53,10 +53,10 @@ export function Dashboard({ go, onAdd, onOpenPay }: { go: (t: Tab) => void; onAd
             {inbox.map((p) => (
               <li key={p.inboxId} className="row clickable" onClick={() => onOpenPay(p)}>
                 <span className="grow">
-                  <b>{p.shop ?? 'お店の名前なし'}</b>
-                  <span className="sub-sub">{hm(p.at)}{p.card && ` · ${p.card}`}</span>
+                  <b>{p.shop ?? p.card ?? 'Apple Pay'}</b>
+                  <span className="sub-sub">{hm(p.at)}{p.shop && p.card && ` · ${p.card}`}</span>
                 </span>
-                <b className="num">{formatYen(p.amount ?? 0)}</b>
+                {p.amount ? <b className="num">{formatYen(p.amount)}</b> : <span className="sub-sub">金額を入力</span>}
                 <button
                   className="icon-btn"
                   aria-label="記録しないで消す"
@@ -90,6 +90,7 @@ export function Dashboard({ go, onAdd, onOpenPay }: { go: (t: Tab) => void; onAd
             </div>
           </div>
         )}
+        {owe > 0 && <div className="note">友達に立て替えてもらっている {formatYen(owe)} は、返したときに計上します</div>}
         <div className="split">
           <div><span className="dot c1" />{SUBSCRIPTION_LABEL} <b className="num">{formatYen(cur.subscriptions)}</b></div>
           <div><span className="dot c2" />{VARIABLE_LABEL} <b className="num">{formatYen(cur.expenses)}</b></div>
